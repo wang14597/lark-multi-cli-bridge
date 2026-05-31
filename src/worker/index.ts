@@ -100,6 +100,9 @@ export async function runWorker(botName: string): Promise<void> {
   });
 
   await ws.start();
+  if (typeof process.send === 'function') {
+    process.send({ kind: 'ready', workerId: botName });
+  }
   log.info('worker started; awaiting messages');
 
   const onShutdown = async (sig: NodeJS.Signals): Promise<void> => {
