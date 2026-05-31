@@ -11,6 +11,8 @@ import { LarkWsClient } from '../lark/ws.js';
 import { CardStreamer } from './card-streamer.js';
 import { LarkCardSink } from './lark-sink.js';
 import { Dispatcher } from './dispatcher.js';
+import { buildBridgeContext } from './bridge-context.js';
+import { downloadAttachment } from '../lark/attachment.js';
 import type { IngressMessage } from '../lark/types.js';
 
 function resolveCwd(value: string): string {
@@ -58,6 +60,8 @@ export async function runWorker(botName: string): Promise<void> {
     domain: bot.lark.tenant,
   });
 
+  const lastIngressByChat = new Map<string, IngressMessage>();
+
   const dispatcher = new Dispatcher({
     adapter,
     makeStreamer: (chatId) =>
@@ -77,10 +81,28 @@ export async function runWorker(botName: string): Promise<void> {
         sessionId,
       });
     },
+    prefixPrompt: (chatId, prompt) => {
+      const last = lastIngressByChat.get(chatId);
+      if (!last) return prompt;
+      return `${buildBridgeContext(last)}\n\n${prompt}`;
+    },
   });
 
   ws.on('message', async (msg: IngressMessage) => {
     if (!msg.text.trim()) return;
+
+    lastIngressByChat.set(msg.chatId, msg);
+
+    const downloaded: string[] = [];
+    for (const att of msg.attachments) {
+      try {
+        const a = await downloadAttachment({ client, chatId: msg.chatId }, msg.messageId, att);
+        downloaded.push(`[Attached ${a.kind}: ${a.localPath}]`);
+      } catch (err) {
+        log.warn({ err: (err as Error).message, fileKey: att.fileKey }, 'attachment download failed');
+      }
+    }
+    const promptText = downloaded.length ? `${msg.text}\n\n${downloaded.join('\n')}` : msg.text;
 
     const existing = sessions.get(msg.chatId);
     const cwd = existing?.cwd ?? resolveCwd(bot.behavior.default_cwd);
@@ -89,7 +111,7 @@ export async function runWorker(botName: string): Promise<void> {
     try {
       await dispatcher.enqueue({
         chatId: msg.chatId,
-        prompt: msg.text,
+        prompt: promptText,
         cwd,
         ...(existing?.sessionId !== undefined ? { sessionId: existing.sessionId } : {}),
         idleTimeoutMs: bot.behavior.idle_timeout_seconds * 1000,

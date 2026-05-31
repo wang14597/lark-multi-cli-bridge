@@ -99,6 +99,35 @@ export function parseIngressEvent(raw: unknown, opts: ParseOpts = {}): IngressMe
 
   const chatType: 'p2p' | 'group' = asStr(msg['chat_type']) === 'group' ? 'group' : 'p2p';
 
+  const attachments: import('./types.js').RawAttachment[] = [];
+  let cardJson: string | undefined;
+  try {
+    const content = asStr(msg['content']) !== undefined ? JSON.parse(asStr(msg['content'])!) : {};
+    if (messageType === 'image' && typeof (content as Record<string, unknown>)['image_key'] === 'string') {
+      const imageKey = (content as Record<string, unknown>)['image_key'] as string;
+      attachments.push({
+        fileKey: imageKey,
+        fileName: `image-${imageKey}.png`,
+        type: 'image',
+      });
+    }
+    if (messageType === 'file' && typeof (content as Record<string, unknown>)['file_key'] === 'string') {
+      const fileKey = (content as Record<string, unknown>)['file_key'] as string;
+      const rawFileName = (content as Record<string, unknown>)['file_name'];
+      attachments.push({
+        fileKey,
+        fileName: typeof rawFileName === 'string' ? rawFileName : `file-${fileKey}`,
+        type: 'file',
+      });
+    }
+    if (messageType === 'interactive') {
+      const rawContent = asStr(msg['content']);
+      if (rawContent !== undefined) cardJson = rawContent;
+    }
+  } catch {
+    // leave attachments empty / cardJson undefined
+  }
+
   return {
     chatId,
     chatType,
@@ -112,7 +141,8 @@ export function parseIngressEvent(raw: unknown, opts: ParseOpts = {}): IngressMe
       return { openId };
     }),
     rawType,
-    attachments: [],
+    attachments,
+    ...(cardJson !== undefined ? { cardJson } : {}),
     receivedAt: new Date().toISOString(),
   };
 }

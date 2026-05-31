@@ -9,6 +9,7 @@ export interface IngressMessage {
   mentions: Array<{ openId: string; name?: string }>;
   rawType: 'text' | 'post' | 'interactive' | 'image' | 'file' | 'merge_forward' | 'audio' | 'unknown';
   quoted?: QuotedMessage;
+  cardJson?: string;
   attachments: RawAttachment[];
   receivedAt: string;
 }
