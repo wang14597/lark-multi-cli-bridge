@@ -6,7 +6,7 @@ import { loadAllBots } from '../config/load.js';
 import { SessionStore } from '../session/store.js';
 import { createLogger } from '../telemetry/logger.js';
 import { buildAdapter } from '../adapters/registry.js';
-import { createLarkClient } from '../lark/client.js';
+import { createLarkClient, fetchAppOwnerOpenId } from '../lark/client.js';
 import { LarkWsClient } from '../lark/ws.js';
 import { CardStreamer } from './card-streamer.js';
 import { LarkCardSink } from './lark-sink.js';
@@ -45,8 +45,6 @@ export async function runWorker(botName: string): Promise<void> {
     throw new Error(`bot ${botName}: app_secret required in M1 (secret refs not yet supported)`);
   }
 
-  const appOwnerOpenId = process.env.LMCB_APP_OWNER_OPEN_ID ?? '';
-
   const today = new Date().toISOString().slice(0, 10);
   const log = createLogger({
     file: paths.workerLog(botName, today),
@@ -67,6 +65,11 @@ export async function runWorker(botName: string): Promise<void> {
     appSecret: bot.lark.app_secret,
     domain: bot.lark.tenant,
   });
+
+  const appOwnerOpenId =
+    (await fetchAppOwnerOpenId(client, bot.lark.app_id)) ??
+    process.env.LMCB_APP_OWNER_OPEN_ID ??
+    '';
 
   const sessions = new SessionStore(paths.sessionsJson);
   await sessions.load();

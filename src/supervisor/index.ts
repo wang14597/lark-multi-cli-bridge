@@ -9,6 +9,7 @@ import { IpcServer } from './ipc-server.js';
 import { WorkerManager } from './worker-manager.js';
 import { backoffDelays } from '../util/retry.js';
 import { Methods } from './ipc-protocol.js';
+import { BotsDirWatcher } from '../config/reload.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_SCRIPT = resolve(HERE, '../worker/index.js');
@@ -28,8 +29,11 @@ export async function runSupervisor(): Promise<void> {
     delays: backoffDelays(),
   });
 
+  let watcher: BotsDirWatcher | undefined;
+
   const teardown = async (): Promise<void> => {
     log.info('supervisor tearing down');
+    watcher?.stop();
     await mgr.stop();
     await ipc.stop();
     await writeJsonAtomic(paths.processesJson, { entries: [] }).catch(() => {});
@@ -65,6 +69,21 @@ export async function runSupervisor(): Promise<void> {
 
   await ipc.start();
   await mgr.start();
+
+  watcher = new BotsDirWatcher(paths.bots);
+  let reloadTimer: NodeJS.Timeout | undefined;
+  watcher.on('change', (filename: string) => {
+    if (reloadTimer) clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(async () => {
+      const newBots = await loadAllBots(paths.bots);
+      const target = newBots.find((b) => `${b.name}.yaml` === filename || `${b.name}.yml` === filename);
+      if (target) {
+        log.info({ bot: target.name }, 'config changed; restarting worker');
+        await mgr.restart(target.name).catch((err) => log.warn({ err }, 'restart on reload failed'));
+      }
+    }, 500);
+  });
+  watcher.start();
 
   await writeJsonAtomic(paths.processesJson, {
     entries: [{ pid: process.pid, startedAt: new Date().toISOString() }],
