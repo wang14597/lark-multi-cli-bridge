@@ -24,6 +24,11 @@ import { timeoutHandler } from '../commands/handlers/timeout.js';
 import { makeStopHandler } from '../commands/handlers/stop.js';
 import { wsHandler } from '../commands/handlers/ws.js';
 import { abortRegistryFromDispatcher } from './abort-registry.js';
+import { isAuthorized, isAdmin } from '../auth/access-control.js';
+import { accessHandler } from '../commands/handlers/access.js';
+import { sessionsHandler } from '../commands/handlers/sessions.js';
+import { makeReconnectHandler } from '../commands/handlers/reconnect.js';
+import { makeDoctorHandler } from '../commands/handlers/doctor.js';
 
 function resolveCwd(value: string): string {
   if (value === '~') return homedir();
@@ -39,6 +44,8 @@ export async function runWorker(botName: string): Promise<void> {
   if (!bot.lark.app_secret) {
     throw new Error(`bot ${botName}: app_secret required in M1 (secret refs not yet supported)`);
   }
+
+  const appOwnerOpenId = process.env.LMCB_APP_OWNER_OPEN_ID ?? '';
 
   const today = new Date().toISOString().slice(0, 10);
   const log = createLogger({
@@ -72,6 +79,8 @@ export async function runWorker(botName: string): Promise<void> {
     appSecret: bot.lark.app_secret,
     domain: bot.lark.tenant,
   });
+
+  const reconnector = { reconnect: async (): Promise<void> => { await ws.stop(); await ws.start(); } };
 
   const lastIngressByChat = new Map<string, IngressMessage>();
 
@@ -108,6 +117,10 @@ export async function runWorker(botName: string): Promise<void> {
     timeoutHandler,
     wsHandler,
     makeStopHandler(abortRegistryFromDispatcher(dispatcher)),
+    accessHandler,
+    sessionsHandler,
+    makeReconnectHandler(reconnector),
+    makeDoctorHandler(adapter),
   ];
   let router: CommandRouter;
   router = new CommandRouter([
@@ -118,7 +131,11 @@ export async function runWorker(botName: string): Promise<void> {
   ws.on('message', async (msg: IngressMessage) => {
     if (!msg.text.trim()) return;
 
-    const isAdmin = bot.access.admins.includes(msg.senderOpenId);
+    if (!isAuthorized({ access: bot.access, senderOpenId: msg.senderOpenId, chatId: msg.chatId, ...(appOwnerOpenId ? { appOwnerOpenId } : {}) })) {
+      log.info({ chatId: msg.chatId, sender: msg.senderOpenId }, 'dropped: unauthorized');
+      return;
+    }
+    const admin = isAdmin({ access: bot.access, senderOpenId: msg.senderOpenId, ...(appOwnerOpenId ? { appOwnerOpenId } : {}) });
     const replyText = async (text: string): Promise<void> => {
       await client.im.message.create({
         params: { receive_id_type: 'chat_id' },
@@ -128,7 +145,7 @@ export async function runWorker(botName: string): Promise<void> {
     const handled = await router.dispatch(msg.text, {
       chatId: msg.chatId,
       senderOpenId: msg.senderOpenId,
-      isAdmin,
+      isAdmin: admin,
       bot,
       sessions,
       workspaces,
