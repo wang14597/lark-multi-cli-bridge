@@ -14,6 +14,16 @@ import { Dispatcher } from './dispatcher.js';
 import { buildBridgeContext } from './bridge-context.js';
 import { downloadAttachment } from '../lark/attachment.js';
 import type { IngressMessage } from '../lark/types.js';
+import { WorkspaceStore } from '../session/workspace.js';
+import { CommandRouter } from '../commands/router.js';
+import { makeHelpHandler } from '../commands/handlers/help.js';
+import { statusHandler } from '../commands/handlers/status.js';
+import { newHandler } from '../commands/handlers/new.js';
+import { cdHandler } from '../commands/handlers/cd.js';
+import { timeoutHandler } from '../commands/handlers/timeout.js';
+import { makeStopHandler } from '../commands/handlers/stop.js';
+import { wsHandler } from '../commands/handlers/ws.js';
+import { abortRegistryFromDispatcher } from './abort-registry.js';
 
 function resolveCwd(value: string): string {
   if (value === '~') return homedir();
@@ -54,6 +64,9 @@ export async function runWorker(botName: string): Promise<void> {
   const sessions = new SessionStore(paths.sessionsJson);
   await sessions.load();
 
+  const workspaces = new WorkspaceStore(paths.workspacesJson);
+  await workspaces.load();
+
   const ws = new LarkWsClient({
     appId: bot.lark.app_id,
     appSecret: bot.lark.app_secret,
@@ -88,8 +101,40 @@ export async function runWorker(botName: string): Promise<void> {
     },
   });
 
+  const baseHandlers = [
+    statusHandler,
+    newHandler,
+    cdHandler,
+    timeoutHandler,
+    wsHandler,
+    makeStopHandler(abortRegistryFromDispatcher(dispatcher)),
+  ];
+  let router: CommandRouter;
+  router = new CommandRouter([
+    makeHelpHandler(() => router.list(true)),
+    ...baseHandlers,
+  ]);
+
   ws.on('message', async (msg: IngressMessage) => {
     if (!msg.text.trim()) return;
+
+    const isAdmin = bot.access.admins.includes(msg.senderOpenId);
+    const replyText = async (text: string): Promise<void> => {
+      await client.im.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: { receive_id: msg.chatId, msg_type: 'text', content: JSON.stringify({ text }) },
+      });
+    };
+    const handled = await router.dispatch(msg.text, {
+      chatId: msg.chatId,
+      senderOpenId: msg.senderOpenId,
+      isAdmin,
+      bot,
+      sessions,
+      workspaces,
+      reply: replyText,
+    });
+    if (handled) return;
 
     lastIngressByChat.set(msg.chatId, msg);
 
