@@ -6,6 +6,7 @@ import { stopCommand } from './commands/stop.js';
 import { psCommand } from './commands/ps.js';
 import { restartCommand } from './commands/restart.js';
 import { reloadCommand } from './commands/reload.js';
+import { daemonInstall, daemonUninstall, daemonStatus } from './commands/daemon.js';
 
 const program = new Command();
 program.name('lmcb').description('lark-multi-cli-bridge').version('0.0.1');
@@ -32,6 +33,11 @@ program.command('stop').description('stop the supervisor').action(stopCommand);
 program.command('ps').description('list workers and their state').action(psCommand);
 program.command('restart <bot>').description('restart a worker').action(restartCommand);
 program.command('reload <bot>').description('reload a worker (alias for restart in M3)').action(reloadCommand);
+
+const daemon = program.command('daemon').description('manage the daemon service');
+daemon.command('install').action(daemonInstall);
+daemon.command('uninstall').action(daemonUninstall);
+daemon.command('status').action(daemonStatus);
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(err);
