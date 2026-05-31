@@ -1,0 +1,5 @@
+{"type":"session.start","session_id":"rollout-2026-05-31-abc"}
+{"type":"message.delta","role":"assistant","text":"Hi"}
+{"type":"message.delta","role":"assistant","text":" there friend!"}
+{"type":"message.end","role":"assistant"}
+{"type":"session.end","session_id":"rollout-2026-05-31-abc","usage":{"input_tokens":11,"output_tokens":4}}
