@@ -87,7 +87,7 @@ export async function runWorker(botName: string): Promise<void> {
 
     log.info({ chatId: msg.chatId, sender: msg.senderOpenId }, 'dispatching message');
     try {
-      await dispatcher.dispatch({
+      await dispatcher.enqueue({
         chatId: msg.chatId,
         prompt: msg.text,
         cwd,

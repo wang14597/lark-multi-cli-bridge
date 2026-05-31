@@ -36,7 +36,7 @@ describe('Dispatcher (MVP — no preempt)', () => {
     const onSession = vi.fn();
     const d = new Dispatcher({ adapter, makeStreamer: () => streamer, onSessionUpdate: onSession });
 
-    await d.dispatch({
+    await d.enqueue({
       chatId: 'oc_1',
       prompt: 'say hi',
       cwd: '/tmp',
