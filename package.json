@@ -1,0 +1,41 @@
+{
+  "name": "lark-multi-cli-bridge",
+  "version": "0.0.1",
+  "description": "Lark/Feishu bridge that routes messages to Claude / Codex / Gemini CLIs, one bot per backend.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "lmcb": "./bin/lmcb.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.41.0",
+    "commander": "^12.1.0",
+    "js-yaml": "^4.1.0",
+    "pino": "^9.4.0",
+    "pino-roll": "^2.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.14.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.3",
+    "tsup": "^8.2.4",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}
