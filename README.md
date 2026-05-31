@@ -27,7 +27,15 @@ Full design: [docs/architecture.md](docs/architecture.md). Canonical spec under 
 
 ## Quickstart
 
-See [docs/quickstart.md](docs/quickstart.md).
+The fastest way is the interactive wizard:
+
+```bash
+node ./bin/lmcb.mjs init
+```
+
+It walks you through choosing a backend (claude / codex / gemini), getting the Lark `app_id` + `app_secret` from the developer console, and writing the bot YAML. Run it again to add more bots.
+
+For full quickstart see [docs/quickstart.md](docs/quickstart.md).
 
 ## Status
 

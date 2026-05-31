@@ -12,6 +12,21 @@ npm link   # exposes the `lmcb` command globally (or run via `node ./bin/lmcb.mj
 
 ## 2. Configure your first bot
 
+## Option A: interactive wizard (recommended for first-time setup)
+
+```bash
+node ./bin/lmcb.mjs init
+```
+
+The wizard:
+1. Asks you to pick a backend (claude / codex / gemini).
+2. Defaults the bot name to `<backend>-bot` (you can change it).
+3. Tells you how to get `app_id` and `app_secret` from the Lark developer console, and offers to open the browser for you.
+4. Validates and stores everything to `~/.lark-multi-cli-bridge/bots/<name>.yaml` (chmod 600).
+5. Asks whether to add another bot — you can chain three bots in one wizard run.
+
+## Option B: manual `bot add` (for scripts / automation)
+
 You need a Lark app with `app_id` + `app_secret` and a bot identity attached.
 
 ```bash

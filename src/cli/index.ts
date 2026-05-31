@@ -8,6 +8,7 @@ import { restartCommand } from './commands/restart.js';
 import { reloadCommand } from './commands/reload.js';
 import { daemonInstall, daemonUninstall, daemonStatus } from './commands/daemon.js';
 import { botAdd, botList, botRm } from './commands/bot.js';
+import { initCommand } from './commands/init.js';
 
 const program = new Command();
 program.name('lmcb').description('lark-multi-cli-bridge').version('0.0.1');
@@ -56,6 +57,8 @@ botCmd
   });
 botCmd.command('list').action(botList);
 botCmd.command('rm <name>').action(botRm);
+
+program.command('init').description('interactive wizard to add bot(s) step-by-step').action(initCommand);
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(err);

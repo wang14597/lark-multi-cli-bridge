@@ -12,6 +12,21 @@ npm link   # 把 `lmcb` 命令注册到全局（或直接 `node ./bin/lmcb.mjs`�
 
 ## 2. 配置第一个 bot
 
+## 选项 A: 交互式向导 (推荐首次配置)
+
+```bash
+node ./bin/lmcb.mjs init
+```
+
+向导会：
+1. 让你选后端 (claude / codex / gemini)。
+2. 默认 bot 名为 `<backend>-bot`，可改。
+3. 告诉你怎么从 Lark 开发者后台拿 `app_id` 和 `app_secret`，可一键打开浏览器。
+4. 验证后写入 `~/.lark-multi-cli-bridge/bots/<名字>.yaml`（chmod 600）。
+5. 询问是否继续添加下一个 bot——一次向导可链式配 3 个。
+
+## 选项 B: 手动 `bot add`（适合脚本/自动化）
+
 你需要一个 Lark 应用（含 `app_id` + `app_secret`）和绑定到它的机器人身份。
 
 ```bash

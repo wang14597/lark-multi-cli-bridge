@@ -27,7 +27,15 @@ English: [README.md](README.md)
 
 ## 快速开始
 
-见 [docs/quickstart.zh.md](docs/quickstart.zh.md)。
+推荐用交互式向导：
+
+```bash
+node ./bin/lmcb.mjs init
+```
+
+它会引导你选择后端 (claude / codex / gemini)、从 Lark 开发者后台拿 `app_id` + `app_secret`、并写入 bot YAML。再跑一次就可以加更多 bot。
+
+完整教程见 [docs/quickstart.zh.md](docs/quickstart.zh.md)。
 
 ## 状态
 
