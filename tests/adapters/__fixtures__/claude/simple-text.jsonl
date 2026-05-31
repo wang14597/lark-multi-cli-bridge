@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"sess_abc","cwd":"/tmp","model":"claude-opus-4-7"}
+{"type":"assistant","message":{"id":"msg_1","content":[{"type":"text","text":"Hello"}]}}
+{"type":"assistant","message":{"id":"msg_1","content":[{"type":"text","text":" world"}]}}
+{"type":"result","subtype":"success","session_id":"sess_abc","is_error":false,"result":"Hello world","usage":{"input_tokens":12,"output_tokens":4}}

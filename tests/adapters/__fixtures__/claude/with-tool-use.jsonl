@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","session_id":"sess_tool","cwd":"/tmp","model":"claude-opus-4-7"}
+{"type":"assistant","message":{"id":"msg_1","content":[{"type":"tool_use","id":"tu_1","name":"Read","input":{"file_path":"foo.ts"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"tu_1","is_error":false,"content":[{"type":"text","text":"file contents"}]}]}}
+{"type":"assistant","message":{"id":"msg_2","content":[{"type":"text","text":"I read the file."}]}}
+{"type":"result","subtype":"success","session_id":"sess_tool","is_error":false,"result":"I read the file.","usage":{"input_tokens":50,"output_tokens":10}}
