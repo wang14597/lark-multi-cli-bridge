@@ -5,27 +5,13 @@ import { paths } from '../config/paths.js';
 import { loadAllBots } from '../config/load.js';
 import { SessionStore } from '../session/store.js';
 import { createLogger } from '../telemetry/logger.js';
-import { ClaudeAdapter } from '../adapters/claude.js';
+import { buildAdapter } from '../adapters/registry.js';
 import { createLarkClient } from '../lark/client.js';
 import { LarkWsClient } from '../lark/ws.js';
 import { CardStreamer } from './card-streamer.js';
 import { LarkCardSink } from './lark-sink.js';
 import { Dispatcher } from './dispatcher.js';
-import type { BotConfig } from '../config/schema.js';
-import type { Adapter } from '../adapters/types.js';
 import type { IngressMessage } from '../lark/types.js';
-
-function buildAdapter(bot: BotConfig): Adapter {
-  if (bot.backend.type === 'claude') {
-    const cfg = bot.backend.claude;
-    return new ClaudeAdapter({
-      permissionMode: cfg.permission_mode,
-      ...(cfg.model !== undefined ? { model: cfg.model } : {}),
-      extraArgs: cfg.extra_args,
-    });
-  }
-  throw new Error(`backend not implemented in M1: ${bot.backend.type}`);
-}
 
 function resolveCwd(value: string): string {
   if (value === '~') return homedir();
