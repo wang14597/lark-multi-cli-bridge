@@ -63,6 +63,8 @@ export const AccessSchema = z.object({
   admins: z.array(OpenId).default([]),
 });
 
+export type AccessConfig = z.infer<typeof AccessSchema>;
+
 export const BehaviorSchema = z.object({
   default_cwd: z.string().default('~'),
   group_trigger: z.enum(['mention', 'always']).default('mention'),

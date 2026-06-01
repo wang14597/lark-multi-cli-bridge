@@ -29,6 +29,7 @@ import { accessHandler } from '../commands/handlers/access.js';
 import { sessionsHandler } from '../commands/handlers/sessions.js';
 import { makeReconnectHandler } from '../commands/handlers/reconnect.js';
 import { makeDoctorHandler } from '../commands/handlers/doctor.js';
+import { makeCardActionHandler } from './card-action-handler.js';
 
 function resolveCwd(value: string): string {
   if (value === '~') return homedir();
@@ -138,25 +139,17 @@ export async function runWorker(botName: string): Promise<void> {
     ...baseHandlers,
   ]);
 
-  ws.on('card-action', async (act: import('../lark/card-action.js').CardActionEvent) => {
-    log.info({ chatId: act.chatId, cmd: act.cmd, operator: act.operatorOpenId }, 'card action');
-
-    // Access check: only callers permitted to message the bot can trigger card actions.
-    if (!isAuthorized({ access: bot.access, senderOpenId: act.operatorOpenId, chatId: act.chatId, ...(appOwnerOpenId ? { appOwnerOpenId } : {}) })) {
-      log.info({ chatId: act.chatId, sender: act.operatorOpenId }, 'card-action dropped: unauthorized');
-      return;
-    }
-
-    switch (act.cmd ?? '') {
-      case 'stop': {
-        const aborted = dispatcher.abort(act.chatId);
-        log.info({ chatId: act.chatId, aborted }, 'stop action');
-        break;
-      }
-      default:
-        log.info({ cmd: act.cmd }, 'unknown card action');
-    }
-  });
+  ws.on('card-action', makeCardActionHandler({
+    access: bot.access,
+    dispatcher,
+    log,
+    lastIngressByChat,
+    sessions,
+    botDefaultCwd: resolveCwd(bot.behavior.default_cwd),
+    botBackendType: bot.backend.type,
+    idleTimeoutMs: bot.behavior.idle_timeout_seconds * 1000,
+    ...(appOwnerOpenId ? { appOwnerOpenId } : {}),
+  }));
 
   ws.on('message', async (msg: IngressMessage) => {
     log.info({ chatId: msg.chatId, chatType: msg.chatType, sender: msg.senderOpenId }, 'message received');
