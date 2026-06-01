@@ -12,6 +12,8 @@ export interface CommandCtx {
   sessions: SessionStore;
   workspaces: WorkspaceStore;
   reply(text: string): Promise<void>;
+  /** Send a Lark schema-2.0 interactive card. Falls back to reply() in unit tests where undefined. */
+  replyCard?: ((card: unknown) => Promise<void>) | undefined;
 }
 
 export interface CommandHandler {

@@ -6,7 +6,7 @@ import { loadAllBots } from '../config/load.js';
 import { SessionStore } from '../session/store.js';
 import { createLogger } from '../telemetry/logger.js';
 import { buildAdapter } from '../adapters/registry.js';
-import { createLarkClient, fetchAppOwnerOpenId } from '../lark/client.js';
+import { createLarkClient, fetchAppOwnerOpenId, fetchBotSelfOpenId } from '../lark/client.js';
 import { LarkWsClient } from '../lark/ws.js';
 import { CardStreamer } from './card-streamer.js';
 import { LarkCardSink } from './lark-sink.js';
@@ -71,6 +71,13 @@ export async function runWorker(botName: string): Promise<void> {
     process.env.LMCB_APP_OWNER_OPEN_ID ??
     '';
 
+  const botSelfOpenId =
+    (await fetchBotSelfOpenId(client, bot.lark.app_id)) ??
+    process.env.LMCB_BOT_OPEN_ID ??
+    undefined;
+  if (botSelfOpenId) log.info({ botSelfOpenId }, 'bot self open_id resolved');
+  else log.warn('bot self open_id NOT resolved; group @-mention will not strip prefix');
+
   const sessions = new SessionStore(paths.sessionsJson);
   await sessions.load();
 
@@ -81,6 +88,7 @@ export async function runWorker(botName: string): Promise<void> {
     appId: bot.lark.app_id,
     appSecret: bot.lark.app_secret,
     domain: bot.lark.tenant,
+    ...(botSelfOpenId ? { botSelfOpenId } : {}),
   });
 
   const reconnector = { reconnect: async (): Promise<void> => { await ws.stop(); await ws.start(); } };
@@ -166,6 +174,12 @@ export async function runWorker(botName: string): Promise<void> {
         data: { receive_id: msg.chatId, msg_type: 'text', content: JSON.stringify({ text }) },
       });
     };
+    const replyCard = async (card: unknown): Promise<void> => {
+      await client.im.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: { receive_id: msg.chatId, msg_type: 'interactive', content: JSON.stringify(card) },
+      });
+    };
     const handled = await router.dispatch(msg.text, {
       chatId: msg.chatId,
       senderOpenId: msg.senderOpenId,
@@ -174,6 +188,7 @@ export async function runWorker(botName: string): Promise<void> {
       sessions,
       workspaces,
       reply: replyText,
+      replyCard,
     });
     if (handled) return;
 

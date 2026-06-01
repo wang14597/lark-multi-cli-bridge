@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import type { CommandHandler } from '../types.js';
+import { buildStatusCard } from '../../lark/command-cards.js';
 
 export const statusHandler: CommandHandler = {
   name: 'status',
@@ -10,6 +11,20 @@ export const statusHandler: CommandHandler = {
       await ctx.reply('no session for this chat yet');
       return;
     }
+
+    if (ctx.replyCard !== undefined) {
+      await ctx.replyCard(
+        buildStatusCard({
+          chatId: ctx.chatId,
+          cwd: s.cwd,
+          sessionId: s.sessionId,
+          agentName: s.bot,
+        }),
+      );
+      return;
+    }
+
+    // Text fallback (e.g. in unit tests where replyCard is not available).
     await ctx.reply(
       [
         `bot:           ${s.bot}`,

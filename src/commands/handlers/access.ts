@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import type { CommandHandler } from '../types.js';
+import { buildAccessCard } from '../../lark/command-cards.js';
 
 export const accessHandler: CommandHandler = {
   name: 'access',
@@ -7,6 +8,13 @@ export const accessHandler: CommandHandler = {
   adminOnly: true,
   async run(ctx) {
     const a = ctx.bot.access;
+
+    if (ctx.replyCard !== undefined) {
+      await ctx.replyCard(buildAccessCard(a));
+      return;
+    }
+
+    // Text fallback.
     await ctx.reply(
       [
         `allowed_users: ${a.allowed_users.length === 0 ? '(everyone)' : a.allowed_users.join(', ')}`,

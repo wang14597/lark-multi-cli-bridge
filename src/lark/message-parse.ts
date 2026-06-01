@@ -255,6 +255,16 @@ export function parseIngressEvent(raw: unknown, opts: ParseOpts = {}): IngressMe
         text = text.split(key).join('').replace(/^\s+/, '');
       }
     }
+  } else if (mentions.length > 0) {
+    // Defensive belt-and-suspenders fallback: when no stripMentionOpenIds are
+    // configured (e.g. bot self open_id could not be resolved), still strip a
+    // leading @-mention token when it is immediately followed by a slash command.
+    // This avoids routing "@bot /status" as a plain prompt to the CLI.
+    const first = mentions[0];
+    if (first?.key !== undefined && text.startsWith(first.key)) {
+      const rest = text.slice(first.key.length).trimStart();
+      if (rest.startsWith('/')) text = rest;
+    }
   }
 
   const rawType: IngressMessage['rawType'] = ((): IngressMessage['rawType'] => {

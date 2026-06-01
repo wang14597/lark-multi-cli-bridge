@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import type { CommandHandler } from '../types.js';
+import { buildWorkspacesCard } from '../../lark/command-cards.js';
 
 export const wsHandler: CommandHandler = {
   name: 'ws',
@@ -29,6 +30,16 @@ export const wsHandler: CommandHandler = {
         return ctx.reply(`switched to ${name} (${path}); session reset`);
       }
       case 'list': {
+        const s = ctx.sessions.get(ctx.chatId);
+        const current = s?.cwd;
+        const named = Object.fromEntries(ctx.workspaces.list().map((w) => [w.name, w.path]));
+
+        if (ctx.replyCard !== undefined) {
+          await ctx.replyCard(buildWorkspacesCard(current, named));
+          return;
+        }
+
+        // Text fallback.
         const all = ctx.workspaces.list();
         if (all.length === 0) return ctx.reply('no workspaces saved');
         return ctx.reply(all.map((w) => `  ${w.name} -> ${w.path}`).join('\n'));

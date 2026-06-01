@@ -36,3 +36,27 @@ export async function fetchAppOwnerOpenId(client: Lark.Client, appId: string): P
     return undefined;
   }
 }
+
+/**
+ * Resolve the bot's own open_id via GET /open-apis/bot/v3/info.
+ * This is the open_id that Lark uses when the bot is @-mentioned in group chats.
+ * Returns undefined if the API is unavailable; callers should fall back to
+ * the LMCB_BOT_OPEN_ID env var.
+ */
+export async function fetchBotSelfOpenId(client: Lark.Client, _appId: string): Promise<string | undefined> {
+  try {
+    // Use the SDK's low-level httpInstance to call the bot/v3/info endpoint directly.
+    // This API does not require path params — the identity is derived from the
+    // app credentials already embedded in the client.
+    const http = (client as unknown as { httpInstance?: { request: (opts: { url: string; method: string }) => Promise<unknown> } }).httpInstance;
+    if (!http || typeof http.request !== 'function') return undefined;
+    const res = (await http.request({ url: '/open-apis/bot/v3/info', method: 'GET' })) as {
+      bot?: { open_id?: string };
+      data?: { bot?: { open_id?: string } };
+    };
+    // Handle both unwrapped (res.bot) and wrapped (res.data.bot) shapes.
+    return res.bot?.open_id ?? res.data?.bot?.open_id ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
