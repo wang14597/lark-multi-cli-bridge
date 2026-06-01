@@ -18,6 +18,24 @@ function makeHandler(name: string, description: string, adminOnly?: boolean): Co
   };
 }
 
+describe('schema 2.0 compatibility', () => {
+  // Schema 2.0 cards reject the legacy `tag: 'action'` wrapper with Lark
+  // error 230099 / 200861. Buttons must be top-level elements or wrapped
+  // in `column_set`. Regression guard against the v0.6.0 bug.
+  it('command cards must not emit tag:"action" anywhere', () => {
+    const cards = [
+      buildStatusCard({ chatId: 'oc_x', cwd: '/tmp', agentName: 'bot' }),
+      buildHelpCard([makeHandler('help', 'h'), makeHandler('status', 's')]),
+      buildWorkspacesCard('/a', { w1: '/a' }),
+      buildAccessCard({ allowed_users: [], allowed_chats: [], admins: [] }),
+    ];
+    for (const card of cards) {
+      const json = JSON.stringify(card);
+      expect(json).not.toMatch(/"tag"\s*:\s*"action"/);
+    }
+  });
+});
+
 describe('buildStatusCard', () => {
   it('produces schema 2.0 with expected header and content', () => {
     const card = buildStatusCard({

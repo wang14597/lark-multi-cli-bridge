@@ -23,8 +23,22 @@ function divMd(content: string): object {
   return { tag: 'markdown', content };
 }
 
+// Schema 2.0 no longer supports the legacy `tag: 'action'` wrapper
+// (Lark error 230099 / 200861 ErrorValue: unsupported tag action).
+// Use a `column_set` of equal-weighted columns so buttons render in a
+// horizontal row, matching the open-source reference's layout.
 function actionRow(buttons: ButtonSpec[]): object {
-  return { tag: 'action', actions: buttons.map(button) };
+  return {
+    tag: 'column_set',
+    horizontal_spacing: '8px',
+    columns: buttons.map((spec) => ({
+      tag: 'column',
+      width: 'weighted',
+      weight: 1,
+      vertical_align: 'center',
+      elements: [button(spec)],
+    })),
+  };
 }
 
 const HR: object = { tag: 'hr' };
