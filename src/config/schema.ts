@@ -26,6 +26,8 @@ const ClaudeBackendSchema = z.object({
     permission_mode: z.enum(['default', 'bypassPermissions', 'plan']).default('bypassPermissions'),
     extra_args: z.array(z.string()).default([]),
   }),
+  injectSkillPrompt: z.boolean().optional(),
+  appendSystemPrompt: z.string().optional(),
 });
 
 const CodexBackendSchema = z.object({
@@ -35,6 +37,8 @@ const CodexBackendSchema = z.object({
     json_mode: z.boolean().default(true),
     extra_args: z.array(z.string()).default([]),
   }),
+  injectSkillPrompt: z.boolean().optional(),
+  appendSystemPrompt: z.string().optional(),
 });
 
 const GeminiBackendSchema = z.object({
@@ -43,6 +47,8 @@ const GeminiBackendSchema = z.object({
     model: z.string().optional(),
     extra_args: z.array(z.string()).default([]),
   }),
+  injectSkillPrompt: z.boolean().optional(),
+  appendSystemPrompt: z.string().optional(),
 });
 
 export const BackendSchema = z.discriminatedUnion('type', [

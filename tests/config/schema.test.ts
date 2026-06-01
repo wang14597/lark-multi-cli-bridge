@@ -41,3 +41,53 @@ describe('GlobalConfigSchema', () => {
     expect(parsed.defaults.behavior.group_trigger).toBe('mention');
   });
 });
+
+describe('per-backend skill-prompt config', () => {
+  it('claude backend accepts injectSkillPrompt + appendSystemPrompt', () => {
+    const bot = {
+      ...minimalClaudeBot,
+      backend: {
+        type: 'claude',
+        claude: { permission_mode: 'bypassPermissions' },
+        injectSkillPrompt: false,
+        appendSystemPrompt: 'extra instructions',
+      },
+    };
+    const parsed = BotConfigSchema.parse(bot);
+    if (parsed.backend.type !== 'claude') throw new Error('type narrowing');
+    expect(parsed.backend.injectSkillPrompt).toBe(false);
+    expect(parsed.backend.appendSystemPrompt).toBe('extra instructions');
+  });
+
+  it('codex backend accepts injectSkillPrompt + appendSystemPrompt', () => {
+    const bot = {
+      ...minimalClaudeBot,
+      name: 'codex-bot',
+      backend: {
+        type: 'codex',
+        codex: { extra_args: [] },
+        injectSkillPrompt: true,
+        appendSystemPrompt: 'codex-specific',
+      },
+    };
+    const parsed = BotConfigSchema.parse(bot);
+    if (parsed.backend.type !== 'codex') throw new Error('type narrowing');
+    expect(parsed.backend.injectSkillPrompt).toBe(true);
+    expect(parsed.backend.appendSystemPrompt).toBe('codex-specific');
+  });
+
+  it('gemini backend accepts the same two fields', () => {
+    const bot = {
+      ...minimalClaudeBot,
+      name: 'gemini-bot',
+      backend: {
+        type: 'gemini',
+        gemini: { extra_args: [] },
+      },
+    };
+    const parsed = BotConfigSchema.parse(bot);
+    if (parsed.backend.type !== 'gemini') throw new Error('type narrowing');
+    expect(parsed.backend.injectSkillPrompt).toBeUndefined();
+    expect(parsed.backend.appendSystemPrompt).toBeUndefined();
+  });
+});
