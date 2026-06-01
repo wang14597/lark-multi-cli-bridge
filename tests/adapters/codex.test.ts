@@ -19,11 +19,42 @@ function eventsFromJsonFixture(name: string): AdapterEvent[] {
 }
 
 describe('CodexAdapter.parseCodexJsonLine', () => {
-  it('emits session-start then text-delta then done from JSON fixture', () => {
+  it('emits session-start then text-delta then done from legacy JSON fixture', () => {
     const events = eventsFromJsonFixture('json-simple.jsonl');
     expect(events[0]).toMatchObject({ type: 'session-start' });
     expect(events.some((e) => e.type === 'text-delta')).toBe(true);
     expect(events[events.length - 1]?.type).toBe('done');
+  });
+
+  it('emits session-start/text-delta/done from codex 0.130.0 schema', () => {
+    const events = eventsFromJsonFixture('json-0130.jsonl');
+    // thread.started -> session-start using thread_id
+    expect(events[0]).toEqual({
+      type: 'session-start',
+      sessionId: '019e826f-437c-7a00-a217-abe211f4598b',
+    });
+    // item.completed with type=agent_message -> text-delta
+    expect(events.some((e) => e.type === 'text-delta' && e.text === 'OK')).toBe(true);
+    // turn.completed -> done with usage
+    const last = events[events.length - 1];
+    expect(last?.type).toBe('done');
+    if (last?.type === 'done') {
+      expect(last.sessionId).toBe('019e826f-437c-7a00-a217-abe211f4598b');
+      expect(last.usage).toEqual({ inputTokens: 17176, outputTokens: 174 });
+    }
+  });
+
+  it('ignores turn.started (no-op event)', () => {
+    const evs = [...parseCodexJsonLine('{"type":"turn.started"}')];
+    expect(evs).toEqual([]);
+  });
+
+  it('ignores item.completed for non-agent_message item types (reasoning, tool_call)', () => {
+    const evs = [
+      ...parseCodexJsonLine('{"type":"item.completed","item":{"id":"r0","type":"reasoning","text":"thinking..."}}'),
+      ...parseCodexJsonLine('{"type":"item.completed","item":{"id":"t0","type":"tool_call","name":"x"}}'),
+    ];
+    expect(evs).toEqual([]);
   });
 });
 
@@ -105,5 +136,35 @@ describe('CodexAdapter appendSystemPrompt', () => {
     const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false, skipGitRepoCheck: false });
     const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
     expect(args).not.toContain('--skip-git-repo-check');
+  });
+});
+
+describe('CodexAdapter jsonMode stream-end done fallback', () => {
+  // echo-args.sh writes argv to a file then exits with no stdout.
+  // In jsonMode the parser sees nothing -> historically run() emitted no
+  // `done`, leaving the streaming card stuck on "thinking" forever.
+  // The fallback must synthesize a `done` when the child exits cleanly
+  // but the parser produced none.
+  const ECHO_ARGS_SH = join(HERE, '__fixtures__/echo-args.sh');
+
+  it('emits a synthetic done when jsonMode parser yields no done event', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'codex-test-'));
+    const outFile = join(tmp, 'args.txt');
+    try {
+      const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: true });
+      const ctx: RunContext = {
+        prompt: 'USER-PROMPT',
+        cwd: tmp,
+        signal: new AbortController().signal,
+        idleTimeoutMs: 5000,
+        env: { ECHO_ARGS_OUT: outFile },
+      };
+      const events: AdapterEvent[] = [];
+      for await (const ev of adapter.run(ctx)) events.push(ev);
+      const doneEvents = events.filter((e) => e.type === 'done');
+      expect(doneEvents.length).toBe(1);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
