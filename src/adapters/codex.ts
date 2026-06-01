@@ -125,13 +125,18 @@ export class CodexAdapter implements Adapter {
 
   async *run(ctx: RunContext): AsyncIterable<AdapterEvent> {
     const jsonMode = this.opts.jsonMode ?? true;
-    const baseArgs = ['exec', ...(jsonMode ? ['--json'] : [])];
+    // codex 0.130.0 removed `--session <id>`. Session continuation is now a
+    // subcommand: `codex exec resume [OPTIONS] [SESSION_ID] [PROMPT]`.
+    const baseArgs: string[] = ['exec'];
+    if (ctx.sessionId) baseArgs.push('resume');
+    if (jsonMode) baseArgs.push('--json');
     // codex exec refuses to run outside a git repo (or trusted dir) without this flag.
     // Default on for bridge use: bots commonly point at $HOME or other non-repo cwds.
     if ((this.opts.skipGitRepoCheck ?? true) === true) baseArgs.push('--skip-git-repo-check');
     if (this.opts.model) baseArgs.push('--model', this.opts.model);
-    if (ctx.sessionId) baseArgs.push('--session', ctx.sessionId);
     baseArgs.push(...(this.opts.extraArgs ?? []));
+    // resume subcommand takes SESSION_ID as a positional arg before PROMPT.
+    if (ctx.sessionId) baseArgs.push(ctx.sessionId);
 
     // codex exec has no native --append-system-prompt equivalent, so prepend
     // the system prompt to ctx.prompt with a '\n\n---\n\n' separator.

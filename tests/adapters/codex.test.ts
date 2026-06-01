@@ -75,7 +75,11 @@ describe('CodexAdapter appendSystemPrompt', () => {
   // with a `done` event after the stream ends.
   const ECHO_ARGS_SH = join(HERE, '__fixtures__/echo-args.sh');
 
-  async function runAndCaptureArgs(adapter: CodexAdapter, prompt: string): Promise<string[]> {
+  async function runAndCaptureArgs(
+    adapter: CodexAdapter,
+    prompt: string,
+    sessionId?: string,
+  ): Promise<string[]> {
     const tmp = mkdtempSync(join(tmpdir(), 'codex-test-'));
     const outFile = join(tmp, 'args.txt');
     try {
@@ -85,6 +89,7 @@ describe('CodexAdapter appendSystemPrompt', () => {
         signal: new AbortController().signal,
         idleTimeoutMs: 5000,
         env: { ECHO_ARGS_OUT: outFile },
+        ...(sessionId ? { sessionId } : {}),
       };
       // drain the iterator so run() executes
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -136,6 +141,32 @@ describe('CodexAdapter appendSystemPrompt', () => {
     const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false, skipGitRepoCheck: false });
     const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
     expect(args).not.toContain('--skip-git-repo-check');
+  });
+
+  // codex 0.130.0: --session flag was removed; resume is now a subcommand
+  // `codex exec resume [SESSION_ID] [PROMPT]`. The bridge's prior `--session`
+  // usage now fails with "unexpected argument '--session'".
+  describe('resume subcommand (codex 0.130.0+)', () => {
+    it('uses `exec resume <id>` and never emits a `--session` flag when sessionId is set', async () => {
+      const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false });
+      const args = await runAndCaptureArgs(adapter, 'USER-PROMPT', 'thread-abc-123');
+      expect(args).not.toContain('--session');
+      expect(args[0]).toBe('exec');
+      expect(args[1]).toBe('resume');
+      expect(args).toContain('thread-abc-123');
+      // sessionId must come before the final prompt
+      const idIdx = args.indexOf('thread-abc-123');
+      const promptIdx = args.lastIndexOf('USER-PROMPT');
+      expect(idIdx).toBeLessThan(promptIdx);
+    });
+
+    it('uses plain `exec` (no resume subcommand) when sessionId is absent', async () => {
+      const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false });
+      const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
+      expect(args[0]).toBe('exec');
+      expect(args).not.toContain('resume');
+      expect(args).not.toContain('--session');
+    });
   });
 });
 
