@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
-import { buildStreamingCard, type ToolCallRow } from '../lark/card-builder.js';
+import { renderRunCard } from '../lark/card-builder.js';
+import { createRunState, appendText, appendThinking, addTool, finishTool, finalize } from '../lark/run-state.js';
+import type { RunState } from '../lark/run-state.js';
 
 export interface CardSink {
   create(card: unknown): Promise<string>;
@@ -7,7 +9,6 @@ export interface CardSink {
 }
 
 export interface CardStreamerOpts {
-  header: string;
   sink: CardSink;
   throttleMs: number;
   throttleChars: number;
@@ -15,86 +16,95 @@ export interface CardStreamerOpts {
 
 export class CardStreamer {
   private cardId?: string;
-  private buf = '';
-  private toolCalls = new Map<string, ToolCallRow>();
+  private state: RunState = createRunState();
   private flushTimer: NodeJS.Timeout | undefined;
-  private startTime = Date.now();
-  private state: 'thinking' | 'streaming' | 'done' | 'error' = 'thinking';
   private dirty = false;
+  private charsSinceFlush = 0;
+
   constructor(private opts: CardStreamerOpts) {}
 
   async start(): Promise<void> {
-    const card = buildStreamingCard({ header: this.opts.header, bodyMarkdown: '', state: 'thinking' });
+    this.state = createRunState();
+    const card = renderRunCard(this.state);
     this.cardId = await this.opts.sink.create(card);
+    this.dirty = false;
+    this.charsSinceFlush = 0;
   }
 
   async onTextDelta(text: string): Promise<void> {
-    this.buf += text;
-    this.state = 'streaming';
+    appendText(this.state, text);
     this.dirty = true;
-    if (this.buf.length >= this.opts.throttleChars) {
+    this.charsSinceFlush += text.length;
+    if (this.charsSinceFlush >= this.opts.throttleChars) {
       await this.flush();
     } else if (!this.flushTimer) {
       this.flushTimer = setTimeout(() => void this.flush(), this.opts.throttleMs);
-      this.flushTimer.unref();
+      this.flushTimer.unref?.();
+    }
+  }
+
+  onThinkingDelta(text: string): void {
+    appendThinking(this.state, text);
+    this.dirty = true;
+    if (!this.flushTimer) {
+      this.flushTimer = setTimeout(() => void this.flush(), this.opts.throttleMs);
+      this.flushTimer.unref?.();
     }
   }
 
   onToolCall(callId: string, name: string, input: unknown): void {
-    const summary = summarizeToolInput(name, input);
-    this.toolCalls.set(callId, { name, ...(summary ? { summary } : {}), done: false });
+    addTool(this.state, { id: callId, name, input });
     this.dirty = true;
+    if (!this.flushTimer) {
+      this.flushTimer = setTimeout(() => void this.flush(), this.opts.throttleMs);
+      this.flushTimer.unref?.();
+    }
   }
 
-  onToolResult(callId: string, ok: boolean): void {
-    const existing = this.toolCalls.get(callId);
-    if (!existing) return;
-    this.toolCalls.set(callId, { ...existing, done: true, ok });
+  onToolResult(callId: string, ok: boolean, output?: string): void {
+    finishTool(this.state, callId, ok ? 'done' : 'error', output);
     this.dirty = true;
+    if (!this.flushTimer) {
+      this.flushTimer = setTimeout(() => void this.flush(), this.opts.throttleMs);
+      this.flushTimer.unref?.();
+    }
   }
 
   async onError(message: string): Promise<void> {
-    this.state = 'error';
-    this.buf += `\n\n[error] ${message}`;
+    finalize(this.state, { kind: 'error', errorMsg: message });
     this.dirty = true;
     await this.flush({ force: true });
   }
 
   async onDone(opts: { finalText: string; durationMs: number; usage?: { inputTokens?: number; outputTokens?: number } }): Promise<void> {
-    this.state = 'done';
-    if (opts.finalText.length > this.buf.length) this.buf = opts.finalText;
-    const tokens = opts.usage?.outputTokens !== undefined ? `${(opts.usage.outputTokens / 1000).toFixed(1)}k tokens` : '';
-    const duration = `${(opts.durationMs / 1000).toFixed(1)}s`;
-    const footer = [duration, tokens].filter(Boolean).join(' | ');
+    // If the final text is longer than what we've accumulated, replace last text block.
+    if (opts.finalText) {
+      const lastBlock = this.state.blocks[this.state.blocks.length - 1];
+      if (!lastBlock || lastBlock.kind !== 'text' || lastBlock.content !== opts.finalText) {
+        // Only override if significantly different (finalText is the ground truth)
+        if (opts.finalText.length > 0) {
+          const textBlocks = this.state.blocks.filter((b) => b.kind === 'text');
+          if (textBlocks.length === 0) {
+            this.state.blocks = [{ kind: 'text', content: opts.finalText, streaming: false }];
+          }
+        }
+      }
+    }
+    finalize(this.state, { kind: 'done' });
     this.dirty = true;
-    await this.flush({ force: true, footer });
+    await this.flush({ force: true });
   }
 
-  private async flush(opts: { force?: boolean; footer?: string } = {}): Promise<void> {
+  private async flush(opts: { force?: boolean } = {}): Promise<void> {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = undefined;
     }
     if (!this.cardId) return;
     if (!this.dirty && !opts.force) return;
-    const card = buildStreamingCard({
-      header: this.opts.header,
-      bodyMarkdown: this.buf,
-      state: this.state,
-      toolCalls: Array.from(this.toolCalls.values()),
-      ...(opts.footer ? { footer: opts.footer } : {}),
-    });
+    const card = renderRunCard(this.state);
     await this.opts.sink.patch(this.cardId, card);
     this.dirty = false;
+    this.charsSinceFlush = 0;
   }
-}
-
-function summarizeToolInput(name: string, input: unknown): string {
-  if (input && typeof input === 'object') {
-    const obj = input as Record<string, unknown>;
-    if (typeof obj['file_path'] === 'string') return obj['file_path'];
-    if (typeof obj['command'] === 'string') return obj['command'].slice(0, 80);
-    if (typeof obj['path'] === 'string') return obj['path'];
-  }
-  return '';
 }

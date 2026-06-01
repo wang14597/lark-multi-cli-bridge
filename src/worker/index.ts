@@ -91,7 +91,6 @@ export async function runWorker(botName: string): Promise<void> {
     adapter,
     makeStreamer: (chatId) =>
       new CardStreamer({
-        header: `${botName} @ ${chatId.slice(0, 12)}`,
         sink: new LarkCardSink(client, chatId),
         throttleMs: 500,
         throttleChars: 50,
