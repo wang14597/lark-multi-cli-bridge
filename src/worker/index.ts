@@ -61,6 +61,17 @@ export async function runWorker(botName: string): Promise<void> {
   }
   log.info({ version: preflight.version }, 'adapter ready');
 
+  // Bind every lark-cli child invocation to THIS bot's identity by injecting
+  // the LARKSUITE_CLI_* "external credentials" env vars into the LLM child's
+  // environment. lark-cli detects these and switches to its external-provider
+  // mode, bypassing config.json and the OS keychain entirely — so the worker
+  // never touches the global default profile and stays cross-platform.
+  const larkCliEnv: Record<string, string> = {
+    LARKSUITE_CLI_APP_ID: bot.lark.app_id,
+    LARKSUITE_CLI_APP_SECRET: bot.lark.app_secret,
+    LARKSUITE_CLI_BRAND: bot.lark.tenant,
+  };
+
   const client = createLarkClient({
     appId: bot.lark.app_id,
     appSecret: bot.lark.app_secret,
@@ -119,6 +130,7 @@ export async function runWorker(botName: string): Promise<void> {
       if (!last) return prompt;
       return `${buildBridgeContext(last)}\n\n${prompt}`;
     },
+    extraEnv: larkCliEnv,
   });
 
   const baseHandlers = [

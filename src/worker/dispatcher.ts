@@ -20,6 +20,10 @@ export interface DispatcherOpts {
   batchWindowMs?: number;
   resolveIdleTimeoutMs?: (chatId: string) => number | undefined;
   prefixPrompt?: (chatId: string, prompt: string) => string;
+  // Env merged into every adapter.run() invocation. Per-request env wins on
+  // key collision. Use for static per-worker identity injection, e.g.
+  // LARKSUITE_CLI_APP_ID/SECRET that locks every lark-cli child to one bot.
+  extraEnv?: Record<string, string>;
 }
 
 export interface DispatchRequest {
@@ -104,6 +108,10 @@ export class Dispatcher {
     const idleMs = overrideIdle ?? req.idleTimeoutMs;
     const prompt = this.opts.prefixPrompt?.(req.chatId, req.prompt) ?? req.prompt;
 
+    const mergedEnv =
+      this.opts.extraEnv || req.env
+        ? { ...(this.opts.extraEnv ?? {}), ...(req.env ?? {}) }
+        : undefined;
     try {
       for await (const ev of this.opts.adapter.run({
         prompt,
@@ -111,7 +119,7 @@ export class Dispatcher {
         ...(req.sessionId !== undefined ? { sessionId: req.sessionId } : {}),
         signal,
         idleTimeoutMs: idleMs,
-        ...(req.env !== undefined ? { env: req.env } : {}),
+        ...(mergedEnv !== undefined ? { env: mergedEnv } : {}),
       })) {
         switch (ev.type) {
           case 'session-start':
