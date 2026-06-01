@@ -2,12 +2,22 @@
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { spawn } from 'node:child_process';
-import { platform } from 'node:os';
+import { homedir, platform } from 'node:os';
 import { readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve, join } from 'node:path';
 import { paths } from '../../config/paths.js';
 import { botAdd } from './bot.js';
 import { scanRegisterApp } from '../../auth/register-app.js';
+
+const OVERLAY_SKILL_NAME = 'lark-bridge-overlay';
+const SKILL_AGENT_DIRS = [
+  '.claude/skills',
+  '.agents/skills',
+  '.codex/skills',
+  '.gemini/skills',
+] as const;
 
 const APP_ID_RE = /^cli_[A-Za-z0-9]+$/;
 const BOT_NAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -15,6 +25,44 @@ const BACKENDS = ['claude', 'codex', 'gemini'] as const;
 type Backend = (typeof BACKENDS)[number];
 const PROVISION_CHOICES = ['scan', 'manual'] as const;
 type ProvisionChoice = (typeof PROVISION_CHOICES)[number];
+
+/**
+ * Default-yes Y/n parser used by the post-init skill-install prompt.
+ * Empty input, y, Y, yes, YES → true (install).
+ * n, N, no, NO → false (skip).
+ * Anything else → true (treat as default).
+ */
+export function parseInstallSkillsAnswer(input: string): boolean {
+  const t = input.trim().toLowerCase();
+  if (t === 'n' || t === 'no') return false;
+  return true;
+}
+
+export function isOverlaySkillInstalled(home: string = homedir()): boolean {
+  for (const d of SKILL_AGENT_DIRS) {
+    if (existsSync(join(home, d, OVERLAY_SKILL_NAME))) return true;
+  }
+  return false;
+}
+
+/**
+ * Locate scripts/install-skills.sh relative to this module.
+ * - Built (dist/cli/index.js): repo root is two levels up.
+ * - tsx/dev (src/cli/commands/init.ts): repo root is three levels up.
+ * Returns undefined if neither path resolves to an existing file (e.g.
+ * the bridge was installed without its scripts/ tree).
+ */
+export function resolveInstallSkillsScript(moduleUrl: string = import.meta.url): string | undefined {
+  const here = dirname(fileURLToPath(moduleUrl));
+  const candidates = [
+    resolve(here, '..', '..', 'scripts', 'install-skills.sh'),
+    resolve(here, '..', '..', '..', 'scripts', 'install-skills.sh'),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return undefined;
+}
 
 export function parseProvisionChoice(input: string): ProvisionChoice | undefined {
   const trimmed = input.trim().toLowerCase();
@@ -253,6 +301,50 @@ async function addOneBot(): Promise<boolean> {
   return more === 'y' || more === 'yes';
 }
 
+async function runInstallSkillsScript(scriptPath: string): Promise<void> {
+  await new Promise<void>((res, rej) => {
+    const child = spawn('bash', [scriptPath, '-g', '-y'], { stdio: 'inherit' });
+    child.on('exit', (code) => {
+      if (code === 0) res();
+      else rej(new Error(`install-skills.sh exited with code ${code}`));
+    });
+    child.on('error', rej);
+  });
+}
+
+async function maybeInstallSkills(): Promise<void> {
+  if (isOverlaySkillInstalled()) {
+    console.log('\nAgent skills already installed (lark-bridge-overlay detected). Skipping.');
+    return;
+  }
+  console.log('');
+  console.log('— Agent skills —');
+  console.log('Install agent skills globally? (recommended)');
+  console.log('  - lark-bridge-overlay: bridge-only conventions (injected blocks, card callbacks, OAuth)');
+  console.log('  - lark-im, lark-shared: upstream lark-cli usage guides');
+  console.log('Without these, your bot may echo bridge XML metadata to users or mishandle cards.');
+  const rl = createInterface({ input: stdin, output: stdout });
+  const ans = await rl.question('Install now? [Y/n]: ');
+  rl.close();
+  if (!parseInstallSkillsAnswer(ans)) {
+    console.log('Skipped. You can install later with: pnpm skills:install -g -y');
+    return;
+  }
+  const script = resolveInstallSkillsScript();
+  if (!script) {
+    console.log('\nCould not locate scripts/install-skills.sh from this install.');
+    console.log('Run manually from the repo: pnpm skills:install -g -y');
+    return;
+  }
+  console.log(`\nRunning: bash ${script} -g -y\n`);
+  try {
+    await runInstallSkillsScript(script);
+  } catch (err) {
+    console.error(`\nSkill install failed: ${(err as Error).message}`);
+    console.error('You can retry later with: pnpm skills:install -g -y');
+  }
+}
+
 export async function initCommand(): Promise<void> {
   console.log('lmcb init — interactive bot setup');
   const count = await existingBotCount();
@@ -271,6 +363,9 @@ export async function initCommand(): Promise<void> {
   while (more) {
     more = await addOneBot();
   }
+
+  await maybeInstallSkills();
+
   console.log('\nDone. Next steps:');
   console.log('  node ./bin/lmcb.mjs start --foreground   # for first-time debugging');
   console.log('  node ./bin/lmcb.mjs ps                   # see worker state');
