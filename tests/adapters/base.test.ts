@@ -31,4 +31,23 @@ describe('spawnWithLifecycle', () => {
     ).rejects.toThrow();
     expect(lines).toEqual([]);
   });
+
+  it('rejects with a catchable error when the binary does not exist (ENOENT)', async () => {
+    // Regression test: previously a missing CLI binary surfaced as an
+    // unhandled `'error'` event on the child process, which crashed the
+    // entire worker (node:events:486 throw er). The iterator must surface
+    // the spawn failure as a thrown error the caller can `try/catch`.
+    const ac = new AbortController();
+    await expect(
+      (async () => {
+        for await (const _line of spawnWithLifecycle(
+          '/definitely/does/not/exist/binary-xyzzy',
+          ['arg1'],
+          { signal: ac.signal, idleTimeoutMs: 5000 },
+        )) {
+          void _line;
+        }
+      })(),
+    ).rejects.toThrow(/ENOENT|spawn/i);
+  });
 });

@@ -21,21 +21,39 @@ export async function* spawnWithLifecycle(
     ...spawnOpts,
   });
 
-  const onAbort = () => {
-    if (!child.killed) {
-      child.kill('SIGTERM');
-      setTimeout(() => {
-        if (!child.killed) child.kill('SIGKILL');
-      }, 5000).unref();
+  // Subscribe to 'error' SYNCHRONOUSLY. Without a listener, a spawn failure
+  // (ENOENT when the CLI binary is missing, EACCES, etc.) is delivered as an
+  // unhandled 'error' event on the next tick and crashes the entire worker.
+  // We stash the error and re-throw at the bottom of the try block so the
+  // caller (adapter.run) can `try/catch` and yield {type:'error', ...}.
+  // Also destroy stdio so the readLines loop below doesn't hang forever:
+  // a failed spawn never emits 'exit', and the dangling pipes would
+  // otherwise keep the async iterator alive indefinitely.
+  let spawnError: Error | undefined;
+  child.once('error', (err: Error) => {
+    spawnError = err;
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+  });
+
+  const safeKill = (sig: NodeJS.Signals) => {
+    if (child.pid === undefined || child.killed) return;
+    try {
+      child.kill(sig);
+    } catch {
+      /* race: process already exited */
     }
+  };
+
+  const onAbort = () => {
+    safeKill('SIGTERM');
+    setTimeout(() => safeKill('SIGKILL'), 5000).unref();
   };
   signal.addEventListener('abort', onAbort, { once: true });
 
   let lastByteAt = Date.now();
   const idleTimer = setInterval(() => {
-    if (Date.now() - lastByteAt > idleTimeoutMs) {
-      if (!child.killed) child.kill('SIGTERM');
-    }
+    if (Date.now() - lastByteAt > idleTimeoutMs) safeKill('SIGTERM');
   }, 1000);
   idleTimer.unref();
 
@@ -44,17 +62,42 @@ export async function* spawnWithLifecycle(
     stderrBuf += b.toString('utf8');
   });
 
+  // Resolve on whichever terminal signal arrives first. On ENOENT/EACCES
+  // the child emits 'error' (and never 'exit'), so we also resolve from
+  // 'error' to unblock the await below; the actual error is read from
+  // `spawnError`. 'close' is a final fallback.
   const exitPromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
-    child.on('exit', (code, signal) => resolve({ code, signal }));
+    let settled = false;
+    const finish = (code: number | null, sig: NodeJS.Signals | null) => {
+      if (settled) return;
+      settled = true;
+      resolve({ code, signal: sig });
+    };
+    child.on('exit', (code, sig) => finish(code, sig));
+    child.on('close', () => finish(null, null));
+    child.on('error', () => finish(null, null));
   });
 
   try {
     if (!child.stdout) throw new Error('child has no stdout');
-    for await (const line of readLines(child.stdout)) {
-      lastByteAt = Date.now();
-      yield line;
+    try {
+      for await (const line of readLines(child.stdout)) {
+        lastByteAt = Date.now();
+        yield line;
+      }
+    } catch (e) {
+      // When our error handler destroys stdout in response to a spawn
+      // failure, readLines surfaces a "Premature close" error. Suppress it
+      // so the spawnError check below reports the real cause; otherwise
+      // re-throw.
+      if (!spawnError) throw e;
     }
     const { code, signal: exitSignal } = await exitPromise;
+    // ENOENT/EACCES paths land here with code=null after the 'error' event
+    // fires; surface that first so the caller sees the real cause.
+    if (spawnError) {
+      throw new Error(`failed to spawn ${cmd}: ${spawnError.message}`);
+    }
     if (signal.aborted) {
       throw (signal.reason as Error | undefined) ?? new Error('aborted');
     }
@@ -67,8 +110,6 @@ export async function* spawnWithLifecycle(
   } finally {
     clearInterval(idleTimer);
     signal.removeEventListener('abort', onAbort);
-    if (!child.killed) {
-      child.kill('SIGTERM');
-    }
+    safeKill('SIGTERM');
   }
 }
