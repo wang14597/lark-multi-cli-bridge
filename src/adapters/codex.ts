@@ -54,6 +54,7 @@ export interface CodexAdapterOpts {
   jsonMode?: boolean;
   model?: string;
   extraArgs?: string[];
+  appendSystemPrompt?: string;
 }
 
 export class CodexAdapter implements Adapter {
@@ -82,7 +83,13 @@ export class CodexAdapter implements Adapter {
     if (this.opts.model) baseArgs.push('--model', this.opts.model);
     if (ctx.sessionId) baseArgs.push('--session', ctx.sessionId);
     baseArgs.push(...(this.opts.extraArgs ?? []));
-    baseArgs.push(ctx.prompt);
+
+    // codex exec has no native --append-system-prompt equivalent, so prepend
+    // the system prompt to ctx.prompt with a '\n\n---\n\n' separator.
+    const finalPrompt = this.opts.appendSystemPrompt
+      ? `${this.opts.appendSystemPrompt}\n\n---\n\n${ctx.prompt}`
+      : ctx.prompt;
+    baseArgs.push(finalPrompt);
 
     let finalText = '';
     let sessionId = ctx.sessionId ?? '';
