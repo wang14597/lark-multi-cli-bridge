@@ -17,7 +17,8 @@
     "test:watch": "vitest",
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "skills:install": "bash scripts/install-skills.sh"
   },
   "dependencies": {
     "@larksuiteoapi/node-sdk": "^1.41.0",

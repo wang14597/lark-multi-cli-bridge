@@ -37,6 +37,33 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md)
 
 ## Configuration
 
+### Agent Skills (recommended)
+
+The bridge ships an agent skill, `lark-bridge-overlay`, that teaches the
+LLM the bridge-only conventions (how to read `<bridge_context>` /
+`<quoted_message>` / `<interactive_card>` blocks, the `__claude_cb`
+button-callback pattern, and the foreground-blocking OAuth flow).
+
+It pairs with upstream `larksuite/cli` skills that cover `lark-cli`
+itself — the official Lark CLI ships 26 domain skills (`lark-im`,
+`lark-base`, `lark-calendar`, etc.). Install both layers in one shot:
+
+```bash
+pnpm skills:install -g -y                     # global, no prompts
+UPSTREAM_SKILLS='*' pnpm skills:install -g -y # all 26 upstream + overlay
+```
+
+By default the install picks the minimum useful upstream set
+(`lark-im,lark-shared`) plus this repo's overlay. Override with
+`UPSTREAM_SKILLS=lark-im,lark-base,lark-calendar` or any subset.
+
+Pass `-a claude-code,codex,gemini-cli` to install into specific agent
+dirs, or `-a '*'` for all. `pnpm skills:install --help`-equivalent is
+`npx skills add --help`.
+
+The skill files live in `skills/lark-bridge-overlay/`; verify with
+`npx skills list` after installing.
+
 ### Skill prompt injection
 
 Every bot, regardless of backend, gets a bundled bot-skill prompt

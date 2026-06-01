@@ -35,6 +35,25 @@ node ./bin/lmcb.mjs start --foreground
 
 完整教程见：[docs/quickstart.zh.md](docs/quickstart.zh.md)
 
+## Agent Skills（推荐）
+
+bridge 自带一个 agent skill `lark-bridge-overlay`，教 LLM 怎么读 bridge
+注入的 `<bridge_context>` / `<quoted_message>` / `<interactive_card>` 块、
+`__claude_cb` 按钮回调约定、以及前台阻塞的 OAuth 流程。
+
+它跟上游 `larksuite/cli` 的 26 个 lark-cli skill（lark-im / lark-base /
+lark-calendar 等）配套使用——上游教 lark-cli 怎么用，我们的 overlay 教
+bridge 里的专属约定。一次装好两层：
+
+```bash
+pnpm skills:install -g -y                       # 全局，免确认
+UPSTREAM_SKILLS='*' pnpm skills:install -g -y   # 装全部 26 个上游 + overlay
+```
+
+默认只装 `lark-im,lark-shared` 这套最小可用集 + 本仓库的 overlay。可以用
+`UPSTREAM_SKILLS=lark-im,lark-base,lark-calendar` 自选上游域。详细参数见
+[README.md#agent-skills-recommended](./README.md#agent-skills-recommended)。
+
 ## 文档
 
 | 文档 | 说明 |
