@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file. Format insp
 
 中文版: [CHANGELOG.zh.md](CHANGELOG.zh.md)
 
+## [v0.5.1] - 2026-06-01
+
+### Added
+
+- **Card button callback handling**: clicking the ⏹ button on a streaming card now triggers `dispatcher.abort(chatId)` and stops the in-flight run.
+- `src/lark/card-action.ts` — `parseCardActionEvent` + `CardActionEvent` type with defensive dual-shape parsing (`open_chat_id` / `chat_id` fallback).
+- `LarkWsClient` registers `card.action.trigger` alongside `im.message.receive_v1`; emits typed `'card-action'` events.
+- Worker listens for `'card-action'` and routes `cmd: 'stop'` through the same access-control gate as inbound messages.
+
 ## [v0.4.0] - 2026-05-31
 
 ### Changed

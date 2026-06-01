@@ -130,6 +130,26 @@ export async function runWorker(botName: string): Promise<void> {
     ...baseHandlers,
   ]);
 
+  ws.on('card-action', async (act: import('../lark/card-action.js').CardActionEvent) => {
+    log.info({ chatId: act.chatId, cmd: act.cmd, operator: act.operatorOpenId }, 'card action');
+
+    // Access check: only callers permitted to message the bot can trigger card actions.
+    if (!isAuthorized({ access: bot.access, senderOpenId: act.operatorOpenId, chatId: act.chatId, ...(appOwnerOpenId ? { appOwnerOpenId } : {}) })) {
+      log.info({ chatId: act.chatId, sender: act.operatorOpenId }, 'card-action dropped: unauthorized');
+      return;
+    }
+
+    switch (act.cmd) {
+      case 'stop': {
+        const aborted = dispatcher.abort(act.chatId);
+        log.info({ chatId: act.chatId, aborted }, 'stop action');
+        break;
+      }
+      default:
+        log.info({ cmd: act.cmd }, 'unknown card action');
+    }
+  });
+
   ws.on('message', async (msg: IngressMessage) => {
     if (!msg.text.trim()) return;
 

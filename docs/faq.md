@@ -38,5 +38,8 @@ A: In foreground mode: `Ctrl+C` then `pnpm build && lmcb start --foreground`. In
 **Q: Why are some tool calls collapsed?**
 A: At 3+ tool calls, lmcb collapses earlier ones into a summary panel because each Feishu card element has a ~30 KB size limit. Full tool details are in the worker log files. The latest still-running tool stays expanded so you can watch it.
 
+**Q: Can I cancel a run mid-stream?**
+A: Yes, in two ways. Send `/stop` as a text message in the chat, or click the **⏹ 终止** button on the streaming card. Both route to `dispatcher.abort(chatId)`, which sends a `UserStopError` to the in-flight run and renders an "interrupted" final state on the card.
+
 **Q: Can I customize the streaming card look?**
 A: Yes — see `src/lark/card-builder.ts` (`renderRunCard`) and `src/lark/run-state.ts`. Both follow Feishu CardKit 2.0 schema; tweak elements, headers, and borders to taste.

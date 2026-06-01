@@ -38,5 +38,8 @@ A：前台模式：`Ctrl+C`，然后 `pnpm build && lmcb start --foreground`。�
 **Q：为什么部分工具调用被折叠了？**
 A：在 3 个以上工具调用时，lmcb 会把旧的折叠进汇总面板，因为每个飞书卡片元素有约 30 KB 的大小限制。完整的工具细节始终可在 worker 日志文件中查看。最新仍在运行的工具保持展开，以便你实时观察。
 
+**Q：能在对话进行中取消运行吗？**
+A：可以，有两种方式。在聊天中发送 `/stop` 文本消息，或点击流式卡片上的 **⏹ 终止** 按钮。两种方式都会路由到 `dispatcher.abort(chatId)`，向正在运行的任务发送 `UserStopError` 并在卡片上渲染"已中断"的终态。
+
 **Q：能自定义流式卡片的样式吗？**
 A：可以——参见 `src/lark/card-builder.ts`（`renderRunCard`）和 `src/lark/run-state.ts`。两者均遵循飞书 CardKit 2.0 schema，可自由调整元素、标题和边框样式。

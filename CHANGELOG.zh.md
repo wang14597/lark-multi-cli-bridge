@@ -4,6 +4,15 @@
 
 English: [CHANGELOG.md](CHANGELOG.md)
 
+## [v0.5.1] - 2026-06-01
+
+### 新增
+
+- **卡片按钮回调处理**：点击流式卡片上的 ⏹ 按钮，现在会触发 `dispatcher.abort(chatId)` 并终止正在运行的任务。
+- `src/lark/card-action.ts` — `parseCardActionEvent` + `CardActionEvent` 类型，支持防御性双形状解析（`open_chat_id` / `chat_id` 兜底）。
+- `LarkWsClient` 在 `im.message.receive_v1` 之外新增注册 `card.action.trigger`，并发出类型化的 `'card-action'` 事件。
+- Worker 监听 `'card-action'`，将 `cmd: 'stop'` 通过与入站消息相同的访问控制门后路由处理。
+
 ## [v0.4.0] - 2026-05-31
 
 ### 变更

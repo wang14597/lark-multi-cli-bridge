@@ -58,6 +58,8 @@ Notable v0.4.0 additions inside `src/lark/`:
 
 ## Adapter event stream
 
+Card button clicks (e.g. ⏹) are dispatched via Lark's `card.action.trigger` event, parsed by `src/lark/card-action.ts`, and routed to `dispatcher.abort(chatId)`. The `LarkWsClient` emits a typed `'card-action'` event that the worker consumes after performing the same access-control check as inbound messages.
+
 All adapters expose `AsyncIterable<AdapterEvent>` over `run(ctx)`. The discriminated union has **7 variants**:
 
 | Event | When emitted |

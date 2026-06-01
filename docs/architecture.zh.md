@@ -58,6 +58,8 @@ v0.4.0 在 `src/lark/` 中新增的关键文件：
 
 ## 适配器事件流
 
+卡片按钮点击（如 ⏹）通过 Lark 的 `card.action.trigger` 事件下发，由 `src/lark/card-action.ts` 解析后路由到 `dispatcher.abort(chatId)`。`LarkWsClient` 会发出一个类型化的 `'card-action'` 事件，worker 在经过与入站消息相同的访问控制检查后进行消费。
+
 所有适配器通过 `run(ctx)` 暴露 `AsyncIterable<AdapterEvent>`。判别联合类型共有 **7 个变体**：
 
 | 事件 | 触发时机 |
