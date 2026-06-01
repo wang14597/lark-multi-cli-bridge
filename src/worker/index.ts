@@ -147,7 +147,7 @@ export async function runWorker(botName: string): Promise<void> {
       return;
     }
 
-    switch (act.cmd) {
+    switch (act.cmd ?? '') {
       case 'stop': {
         const aborted = dispatcher.abort(act.chatId);
         log.info({ chatId: act.chatId, aborted }, 'stop action');

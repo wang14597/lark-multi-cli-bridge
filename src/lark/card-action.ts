@@ -4,7 +4,7 @@ export interface CardActionEvent {
   chatId: string;
   messageId: string;
   operatorOpenId: string;
-  cmd: string;                          // value.cmd (e.g. 'stop')
+  cmd?: string;                          // value.cmd (optional — absent for LLM-emitted __claude_cb buttons)
   value: Record<string, unknown>;       // full value object for context
   receivedAt: string;
 }
@@ -56,13 +56,12 @@ export function parseCardActionEvent(raw: unknown): CardActionEvent | undefined 
   if (!value) return undefined;
 
   const cmd = asStr(value['cmd']);
-  if (!cmd) return undefined;
 
   return {
     chatId,
     messageId,
     operatorOpenId,
-    cmd,
+    ...(cmd !== undefined ? { cmd } : {}),
     value,
     receivedAt: new Date().toISOString(),
   };
