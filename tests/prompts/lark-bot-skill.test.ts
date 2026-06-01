@@ -6,12 +6,14 @@ import { BOT_SKILL_PROMPT } from '../../src/prompts/lark-bot-skill.js';
 describe('BOT_SKILL_PROMPT', () => {
   it('is a non-empty string within the always-on budget', () => {
     expect(typeof BOT_SKILL_PROMPT).toBe('string');
-    // After slimming the prompt to only always-on essentials (the three
-    // injected blocks); deeper protocols moved into the lark-bridge-overlay
-    // agent skill. Floor guards against accidental content wipe; ceiling
-    // catches anyone tempted to re-inline the overlay content here.
-    expect(BOT_SKILL_PROMPT.length).toBeGreaterThan(1000);
-    expect(BOT_SKILL_PROMPT.length).toBeLessThan(2500);
+    // Bare-minimum always-on essentials: name the bridge, name the three
+    // injected blocks so the LLM doesn't echo them, point at the overlay
+    // skill for everything else. Block field details, CardKit dual-emit,
+    // and protocol specifics all live in lark-bridge-overlay SKILL.md.
+    // Floor guards against accidental content wipe; ceiling catches
+    // anyone tempted to re-inline overlay content here.
+    expect(BOT_SKILL_PROMPT.length).toBeGreaterThan(500);
+    expect(BOT_SKILL_PROMPT.length).toBeLessThan(900);
   });
 
   it('contains the project name substitution', () => {
@@ -38,6 +40,6 @@ describe('BOT_SKILL_PROMPT', () => {
 
   it('content is byte-stable (snapshot guard)', () => {
     const digest = createHash('sha256').update(BOT_SKILL_PROMPT, 'utf8').digest('hex');
-    expect(digest).toMatchInlineSnapshot(`"645a131260bf814e90c1f6d9197906f4f5205da23f936ac249bc5448bc409869"`);
+    expect(digest).toMatchInlineSnapshot(`"2f71fb57de08981710aedb4068935db34c0e708ad61fcd2a56edaac0e5706c17"`);
   });
 });
