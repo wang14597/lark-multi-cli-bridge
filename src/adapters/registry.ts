@@ -33,6 +33,7 @@ export function buildAdapter(bot: BotConfig): Adapter {
         ...(cfg.model !== undefined ? { model: cfg.model } : {}),
         extraArgs: cfg.extra_args,
         ...(appendSystemPrompt ? { appendSystemPrompt } : {}),
+        ...(cfg.skip_git_repo_check !== undefined ? { skipGitRepoCheck: cfg.skip_git_repo_check } : {}),
       });
     }
     case 'gemini': {

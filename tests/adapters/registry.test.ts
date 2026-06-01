@@ -59,6 +59,26 @@ describe('buildAdapter — effective system prompt resolution', () => {
     expect((adapter as any).opts.appendSystemPrompt).toBe(BOT_SKILL_PROMPT);
   });
 
+  it('passes skip_git_repo_check from codex sub-block into adapter opts', () => {
+    const codexBot: BotConfig = {
+      ...baseClaudeBot,
+      name: 'codex-bot',
+      backend: { type: 'codex', codex: { json_mode: true, extra_args: [], skip_git_repo_check: false } as any },
+    };
+    const adapter = buildAdapter(codexBot);
+    expect((adapter as any).opts.skipGitRepoCheck).toBe(false);
+  });
+
+  it('leaves skipGitRepoCheck undefined when codex sub-block omits it (adapter defaults to true)', () => {
+    const codexBot: BotConfig = {
+      ...baseClaudeBot,
+      name: 'codex-bot',
+      backend: { type: 'codex', codex: { json_mode: true, extra_args: [] } },
+    };
+    const adapter = buildAdapter(codexBot);
+    expect((adapter as any).opts.skipGitRepoCheck).toBeUndefined();
+  });
+
   it('passes the same effective prompt into gemini adapter', () => {
     const geminiBot: BotConfig = {
       ...baseClaudeBot,

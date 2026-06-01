@@ -87,6 +87,21 @@ Buttons **without** `__claude_cb` (e.g., the bridge's own `/status`
 buttons) continue to dispatch through the internal command router as
 before — they are not seen by the LLM.
 
+### codex: skip git repo check
+
+`codex exec` refuses to run outside a Git repository (or a directory
+explicitly trusted in `~/.codex/config.toml`) unless invoked with
+`--skip-git-repo-check`. Because bridge bots commonly point at `$HOME`
+or other non-repo cwds, the bridge passes this flag by default for
+every codex bot. You can opt out per bot:
+
+```yaml
+backend:
+  type: codex
+  codex:
+    skip_git_repo_check: false   # default true; set false to enforce codex's trust check
+```
+
 ## Docs
 
 | Doc | Description |

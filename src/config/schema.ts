@@ -36,6 +36,7 @@ const CodexBackendSchema = z.object({
     model: z.string().optional(),
     json_mode: z.boolean().default(true),
     extra_args: z.array(z.string()).default([]),
+    skip_git_repo_check: z.boolean().optional(),
   }),
   injectSkillPrompt: z.boolean().optional(),
   appendSystemPrompt: z.string().optional(),

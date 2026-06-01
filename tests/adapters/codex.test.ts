@@ -88,4 +88,22 @@ describe('CodexAdapter appendSystemPrompt', () => {
     const finalPrompt = args[args.length - 1];
     expect(finalPrompt).toBe('USER-PROMPT');
   });
+
+  it('includes --skip-git-repo-check by default', async () => {
+    const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false });
+    const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
+    expect(args).toContain('--skip-git-repo-check');
+  });
+
+  it('includes --skip-git-repo-check when skipGitRepoCheck is true', async () => {
+    const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false, skipGitRepoCheck: true });
+    const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
+    expect(args).toContain('--skip-git-repo-check');
+  });
+
+  it('omits --skip-git-repo-check when skipGitRepoCheck is false', async () => {
+    const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false, skipGitRepoCheck: false });
+    const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
+    expect(args).not.toContain('--skip-git-repo-check');
+  });
 });
