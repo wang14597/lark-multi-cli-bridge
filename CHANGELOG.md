@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file. Format insp
 
 中文版: [CHANGELOG.zh.md](CHANGELOG.zh.md)
 
+## [v0.7.0] - 2026-06-01
+
+### Added
+
+- **Bundled bot-skill system prompt, injected into every backend by default.** Teaches the LLM about the bridge's `<bridge_context>` / `<quoted_message>` / `<interactive_card>` blocks, how to send interactive cards via the local `lark-cli`, and how to drive `lark-cli auth login` device flow safely. Controlled by two new per-backend YAML fields: `injectSkillPrompt` (default `true`) and `appendSystemPrompt` (optional, concatenated after the skill prompt). Injection mechanism: `claude` uses `--append-system-prompt`; `codex` and `gemini` prepend with a `\n\n---\n\n` separator.
+- **LLM card-button callbacks via `__claude_cb` marker.** When the LLM emits an interactive card with a button whose `value` contains `__claude_cb: true`, clicking the button re-enters the same LLM session with a synthetic `[card-click] {...}` message (the marker stripped before forwarding). Enables multi-step button-driven flows. Buttons without `__claude_cb` (e.g., the bridge's own `/status` buttons) continue to dispatch through the internal command router and are never seen by the LLM.
+
 ## [v0.5.2] - 2026-06-01
 
 ### Fixed
