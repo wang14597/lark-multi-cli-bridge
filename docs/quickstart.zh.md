@@ -1,84 +1,206 @@
 # 快速开始
 
-## 1. 构建与链接
+English: [quickstart.md](quickstart.md)
+
+## 1. 前置条件
+
+- **Node.js >= 20**（通过 `node --version` 确认）。
+- **pnpm**（通过 `pnpm --version` 确认；未安装则运行 `npm i -g pnpm`）。
+- **macOS** — 推荐首次配置（支持 launchd 守护进程）。Linux 支持前台运行；launchd 仅限 macOS。
+- 有访问权限的 **真实 Lark / 飞书账号**。无需提前在开发者后台创建应用——`lmcb init` 向导通过扫码帮你完成。
+- 至少一个 CLI 后端已安装且在 `$PATH` 中可用（如 `claude`、`codex` 或 `gemini`）。
+
+## 2. 安装
 
 ```bash
 git clone <this repo>
 cd lark-multi-cli-bridge
 pnpm install
 pnpm build
-npm link   # 把 `lmcb` 命令注册到全局（或直接 `node ./bin/lmcb.mjs`）
 ```
 
-## 2. 配置第一个 bot
+构建后二进制文件在 `./bin/lmcb.mjs`，可直接用 `node ./bin/lmcb.mjs` 运行，也可全局链接：
 
-## 选项 A: 交互式向导 (推荐首次配置)
+```bash
+npm link   # 把 `lmcb` 注册到全局
+```
+
+## 3. 添加第一个 bot — `lmcb init`
+
+运行交互式向导：
 
 ```bash
 node ./bin/lmcb.mjs init
+# 或全局链接后：
+lmcb init
 ```
 
-向导会：
-1. 让你选后端 (claude / codex / gemini)。
-2. 默认 bot 名为 `<backend>-bot`，可改。
-3. **默认走扫码创建**：用飞书/Lark 移动端扫描二维码，Lark 自动在你的租户下创建内部应用，无需访问开发者后台。选项 2 可改为手动粘贴已有 `app_id` / `app_secret`。
-4. 验证后写入 `~/.lark-multi-cli-bridge/bots/<名字>.yaml`（chmod 600）。
-5. 询问是否继续添加下一个 bot——一次向导可链式配 3 个。
+向导流程如下：
 
-## 选项 B: 手动 `bot add`（适合脚本/自动化）
+**第 1 步 — 选后端**
 
-你需要一个 Lark 应用（含 `app_id` + `app_secret`）和绑定到它的机器人身份。
-
-```bash
-lmcb bot add claude-bot --app-id cli_xxx --app-secret hex_xxx --backend claude
+```
+? Backend (1=claude, 2=codex, 3=gemini): 1
 ```
 
-这会写入 `~/.lark-multi-cli-bridge/bots/claude-bot.yaml`。如果你要调整 `access`、`behavior` 或后端特定参数，手工编辑这个文件。
+**第 2 步 — 命名 bot**
 
-## 3. 启动 supervisor
+```
+? Bot name [claude-bot]:
+```
 
-第一次调试，前台跑：
+按 Enter 接受默认名，或输入自定义名称。
+
+**第 3 步 — 选择创建方式**
+
+```
+? Provisioning method (1=scan QR to create app, 2=paste app_id/secret): 1
+```
+
+选项 1（默认）— 扫码流程：
+- 终端中显示二维码。
+- 打开手机上的飞书/Lark 客户端，扫描二维码。
+- Lark 在你的租户下自动创建内部应用。
+- `app_id` 和 `app_secret` 直接返回给 lmcb，无需打开浏览器。
+
+选项 2 — 手动粘贴：
+- 按提示粘贴已有的 `app_id` 和 `app_secret`。
+
+**第 4 步 — 确认**
+
+凭证验证通过后，向导输出：
+
+```
+✓ App registered: app_id=cli_xxxxxxxx
+```
+
+然后将配置写入 `~/.lark-multi-cli-bridge/bots/<name>.yaml`（chmod 600）。
+
+**第 5 步 — 继续添加 bot**
+
+```
+? Add another bot? (y/N):
+```
+
+输入 `y` 可返回第 1 步，在同一次向导中继续添加 codex 或 gemini bot。
+
+## 4. 启动 supervisor
+
+第一次调试，建议加 `--foreground` 以便查看实时日志：
 
 ```bash
 lmcb start --foreground
 ```
 
-在飞书里给 bot 发消息。你应该看到一张流式卡片显示 Claude 的回复。
+输出类似：
 
-`Ctrl+C` 停止。
-
-## 4. 升级到后台守护进程 (macOS)
-
-```bash
-lmcb start          # 后台模式
-lmcb daemon install # 走 launchd 开机自启
+```
+[supervisor] Starting worker: claude-bot
+[claude-bot] Worker ready
 ```
 
-## 5. 添加更多 bot
+后台运行（静默）：
+
+```bash
+lmcb start
+```
+
+## 5. 在飞书中测试
+
+1. 打开飞书，进入工作台的**内部应用**（或按名称搜索你的 bot）。
+2. 与 bot 开启私聊。
+3. 发送一条消息。你应该看到一张流式卡片，CLI 的回复会实时更新。
+4. 发送 `/help` 查看所有斜杠命令。
+
+## 6. 管理运行中的 bot
+
+| 命令 | 作用 |
+|------|------|
+| `lmcb ps` | 列出 worker 及状态 |
+| `lmcb restart <bot>` | 重启某个 worker |
+| `lmcb stop` | 停止 supervisor（连带所有 worker） |
+| `lmcb daemon status` | 查看 launchd 服务状态（macOS） |
+
+**飞书聊天中的斜杠命令：**
+
+| 斜杠命令 | 效果 |
+|----------|------|
+| `/help` | 列出所有斜杠命令 |
+| `/new` | 开启新 session（重置对话上下文） |
+| `/cd <path>` | 切换工作目录（保留 session） |
+| `/ws <name>` | 切换命名工作区（重置 session） |
+| `/status` | 显示当前 session 信息 |
+| `/stop` | 取消正在运行的 CLI 命令 |
+| `/timeout <secs>` | 覆盖此 session 的空闲超时时间 |
+| `/access` | 查看或修改 bot 白名单（仅 admin） |
+| `/sessions` | 列出所有活跃 session |
+| `/reconnect` | 强制 WebSocket 重连 |
+| `/doctor` | 输出 CLI 可用性和当前 session 状态 |
+
+## 7. 设为守护进程（macOS）
+
+让 supervisor 在登录时自动启动：
+
+```bash
+lmcb daemon install
+```
+
+查看状态：
+
+```bash
+lmcb daemon status
+```
+
+卸载守护进程：
+
+```bash
+lmcb daemon uninstall
+```
+
+升级代码后重新安装守护进程：
+
+```bash
+lmcb daemon uninstall && pnpm build && lmcb daemon install
+```
+
+## 8. 排错
+
+**启动时出现 `99992402 field validation failed`**
+
+无害。这来自 `fetchAppOwnerOpenId` 调用一个 SDK 接口，其请求格式因 SDK 版本而异。错误已被捕获，lmcb 回退到无 owner 行为并正常继续。你的 bot 依然工作正常，后续版本会修复该调用。
+
+**日志位置**
+
+```
+~/.lark-multi-cli-bridge/logs/supervisor.log
+~/.lark-multi-cli-bridge/logs/workers/<bot>/YYYY-MM-DD.log
+```
+
+**worker 反复崩溃**
+
+如果 3 分钟内崩溃 5 次，worker 会被自动禁用。修复根本原因（通常是 CLI 路径错误或凭证缺失）后运行：
+
+```bash
+lmcb restart <bot-name>
+```
+
+**重置后重新开始**
+
+```bash
+rm -rf ~/.lark-multi-cli-bridge/bots/* ~/.lark-multi-cli-bridge/state/sessions.json
+lmcb init
+```
+
+**为不同后端添加第二个 bot**
+
+```bash
+lmcb init
+# 在向导中选择不同后端（如 codex）
+```
+
+或直接使用 CLI：
 
 ```bash
 lmcb bot add codex-bot --app-id cli_yyy --app-secret hex_yyy --backend codex
-lmcb bot add gemini-bot --app-id cli_zzz --app-secret hex_zzz --backend gemini
+lmcb restart codex-bot
 ```
-
-当你编辑或新增 `bots/` 下的 YAML 时，supervisor 会自动热加载对应的 worker（500 ms 防抖）。
-
-手动重启某个 worker：`lmcb restart codex-bot`。
-
-## 常用命令
-
-| 命令 | 作用 |
-|---|---|
-| `lmcb ps` | 列出 worker 及状态 |
-| `lmcb restart <bot>` | 重启一个 worker |
-| `lmcb stop` | 停止 supervisor（连带所有 worker） |
-| `lmcb daemon status` | 查看 launchd 状态 |
-| `lmcb daemon uninstall` | 移除 launchd plist |
-
-在飞书聊天里，用 `/help` 查所有斜杠命令。
-
-## 排错
-
-- `/doctor`（在 Lark 聊天里）输出 CLI 可用性和当前会话状态。
-- 日志在 `~/.lark-multi-cli-bridge/logs/supervisor.log` 和 `~/.lark-multi-cli-bridge/logs/workers/<bot>/YYYY-MM-DD.log`。
-- 如果一个 worker 在 3 分钟内崩 5 次会自动 disable，修复后用 `lmcb restart <bot>` 重新启用。

@@ -1,45 +1,52 @@
 # lark-multi-cli-bridge (lmcb)
 
-飞书/Lark 聊天桥接，把用户消息路由到 **Claude Code**、**OpenAI Codex CLI** 或 **Google Gemini CLI**，支持在一台机器上并发运行多个机器人——每个机器人对应一种 CLI 后端。
+飞书/Lark 聊天桥接，把用户消息路由到 **Claude Code**、**OpenAI Codex CLI** 或 **Google Gemini CLI**，支持在同一台机器上并发运行多个机器人——每个机器人对应一种 CLI 后端。
 
 English: [README.md](README.md)
 
+## 为什么
+
+`lark-channel-bridge` 和 `feishu-claude-code-bridge` 各自只支持一种 CLI 后端。lmcb 填补了这个空白：你可以在同一个 supervisor 下同时跑 `claude-bot`、`codex-bot` 和 `gemini-bot`，各自状态隔离、独立崩溃恢复，共用同一套精美的流式卡片 UI。
+
 ## 功能
 
-- 一个 supervisor 进程为每个 bot fork 一个 worker。Worker 崩溃 → supervisor 用指数退避重启。
-- Lark 流式卡片更新（节流：500 ms / 50 字），避免触发 API 限流。
-- 抢占 + 500 ms 批处理：快速连发的多条消息合并成一次 CLI 调用，不会破坏对话上下文。
-- 每个 chat 的 session 续接基于 CLI 自身的 session id（多轮对话上下文保留）。
-- 斜杠命令：`/help`、`/new`、`/cd`、`/ws`、`/status`、`/stop`、`/timeout`、`/access`、`/sessions`、`/reconnect`、`/doctor`。
-- 每 bot 独立的访问控制；app owner 默认就是 admin。
-- macOS launchd 守护进程开机自启。
-- 添加新 CLI 后端的开发指南：`docs/adapter-authoring.md`。
-
-## 架构
-
-```
-[supervisor] -- fork --> [worker A: claude-bot] --> spawn `claude`
-            \-- fork --> [worker B: codex-bot]  --> spawn `codex`
-            \-- fork --> [worker C: gemini-bot] --> spawn `gemini`
-```
-
-完整设计文档：[docs/architecture.zh.md](docs/architecture.zh.md)。规范在 `docs/superpowers/specs/`。
+- **多 bot、多后端** — 一个 supervisor fork 一个 worker per bot；每个 worker 以独立 bot 身份连接 Lark，并 spawn 各自的 CLI。
+- **扫码创建 app** — `lmcb init` 默认走二维码流程：用飞书/Lark 移动端扫码，Lark 自动在你的租户下创建内部应用并返回 `app_id`/`app_secret`，无需访问开发者后台。
+- **精美流式卡片** — `streaming_mode` 渐进更新；可折叠思考面板；可折叠工具调用面板（3 个以上自动折叠，规避飞书 30 KB 卡片限制）；底部状态栏；终态备注；停止按钮。
+- **抢占 + 500 ms 批处理** — 快速连发的消息合并为一次 CLI 调用，不会重复 spawn。
+- **每个 chat 的 session 续接** — 通过 CLI 自身的 session id 保留多轮对话上下文。
+- **11 条斜杠命令** — `/help`、`/new`、`/cd`、`/ws`、`/status`、`/stop`、`/timeout`、`/access`、`/sessions`、`/reconnect`、`/doctor`。
+- **每 bot 独立访问控制** — 按用户或聊天设白名单；app owner 默认是 admin。
+- **崩溃恢复** — 指数退避（1s → 30s）；3 分钟内崩溃 5 次则 worker 被禁用，`lmcb restart <bot>` 重新启用。
+- **macOS launchd 守护进程** — `lmcb daemon install` 开机自启。
+- **bots 目录热加载** — 编辑 `bots/*.yaml` 后 worker 自动重启（500 ms 防抖）。
+- **附件支持** — 图片和文件下载后以 `[Attached <kind>: <abs path>]` 追加到 prompt。
+- 状态存储在 `~/.lark-multi-cli-bridge/`（配置、bot YAML、会话、日志、媒体文件）。
 
 ## 快速开始
 
 ```bash
-node ./bin/lmcb.mjs init
+pnpm install && pnpm build
+node ./bin/lmcb.mjs init       # 交互式向导：选后端、扫码、完成
+node ./bin/lmcb.mjs start --foreground
 ```
 
-向导默认走扫码流程：用飞书/Lark 移动端扫描二维码，Lark 会在你的租户下自动创建一个内部应用并返回 `app_id` 和 `app_secret`，bridge 直接写入本地配置——无需访问开发者后台。
+`init` 向导引导你完成后端选择、bot 命名和应用创建（扫码或粘贴已有凭证）。完成后，在飞书给你的新 bot 发消息即可。
 
-如需粘贴已有 `app_id` / `app_secret`，在向导中选择选项 2 即可。
+完整教程见：[docs/quickstart.zh.md](docs/quickstart.zh.md)
 
-完整教程见 [docs/quickstart.zh.md](docs/quickstart.zh.md)。
+## 文档
+
+| 文档 | 说明 |
+|------|------|
+| [docs/quickstart.zh.md](docs/quickstart.zh.md) | 分步骤安装和首次运行 |
+| [docs/architecture.zh.md](docs/architecture.zh.md) | 进程拓扑、模块映射、IPC、状态 |
+| [docs/adapter-authoring.zh.md](docs/adapter-authoring.zh.md) | 如何添加第 4 种 CLI 后端 |
+| [docs/faq.zh.md](docs/faq.zh.md) | 排错与常见问题 |
 
 ## 状态
 
-开发中。M1-M5 五个里程碑代码完成，单元测试齐全；针对真实 Lark bot 的端到端 smoke 测试由用户自行完成。
+开发中。v0.4.0 已发布，在 macOS 上完成人工测试。Linux 支持前台运行；launchd 守护进程仅限 macOS（systemd 支持延后）。
 
 ## 许可
 
