@@ -70,6 +70,7 @@ export class CardStreamer {
     }
   }
 
+  // only 'user_stop' is reachable today; 'preempt' is retained for API stability
   async onInterrupted(_reason: 'preempt' | 'user_stop'): Promise<void> {
     finalize(this.state, { kind: 'interrupted' });
     this.dirty = true;

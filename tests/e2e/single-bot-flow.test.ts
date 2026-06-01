@@ -56,12 +56,14 @@ describe('end-to-end single-bot wiring', () => {
       batchWindowMs: 10,
     });
 
+    // enqueue now returns immediately; wait for batch window + run to complete.
     await dispatcher.enqueue({
       chatId: msg.chatId,
       prompt: msg.text,
       cwd: '/tmp',
       idleTimeoutMs: 60_000,
     });
+    await new Promise((r) => setTimeout(r, 50));
 
     expect(streamer.start).toHaveBeenCalledTimes(1);
     expect(streamer.onTextDelta).toHaveBeenCalledWith('Hello');

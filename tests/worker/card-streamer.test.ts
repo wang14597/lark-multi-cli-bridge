@@ -108,7 +108,7 @@ describe('CardStreamer (new RunState-driven)', () => {
     const streamer = new CardStreamer({ sink, throttleMs: 500, throttleChars: 50 });
     await streamer.start();
     await streamer.onTextDelta('partial text');
-    await streamer.onInterrupted('preempt');
+    await streamer.onInterrupted('user_stop');
     await vi.runAllTimersAsync();
     const last = sink.sent[sink.sent.length - 1];
     const lastJson = JSON.stringify(last?.payload);

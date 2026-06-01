@@ -2,14 +2,6 @@
 import type { Adapter } from '../adapters/types.js';
 import type { CardStreamer } from './card-streamer.js';
 
-export class PreemptError extends Error {
-  readonly preempt = true;
-  constructor() {
-    super('preempted by new message');
-    this.name = 'PreemptError';
-  }
-}
-
 export class UserStopError extends Error {
   readonly userStop = true;
   constructor() {
@@ -40,11 +32,9 @@ export interface DispatchRequest {
 }
 
 interface ChatLane {
-  pending: string[];
-  windowTimer: NodeJS.Timeout | undefined;
+  pending: DispatchRequest[];
+  processing: boolean;
   current: { ac: AbortController; promise: Promise<void> } | undefined;
-  windowResolver: (() => void) | undefined;
-  windowPromise: Promise<void> | undefined;
 }
 
 export class Dispatcher {
@@ -63,45 +53,44 @@ export class Dispatcher {
 
   async enqueue(req: DispatchRequest): Promise<void> {
     const lane = this.getLane(req.chatId);
-
-    if (lane.current) {
-      lane.current.ac.abort(new PreemptError());
-      await lane.current.promise.catch(() => {});
+    lane.pending.push(req);
+    if (!lane.processing) {
+      void this.kickProcessor(lane);
     }
+  }
 
-    lane.pending.push(req.prompt);
+  private async kickProcessor(lane: ChatLane): Promise<void> {
+    if (lane.processing) return;
+    lane.processing = true;
+    try {
+      while (lane.pending.length > 0) {
+        // Wait the batch window so rapid follow-ups can coalesce.
+        await new Promise<void>((resolve) => setTimeout(resolve, this.windowMs).unref());
+        if (lane.pending.length === 0) continue;
 
-    if (lane.windowTimer) clearTimeout(lane.windowTimer);
-    if (!lane.windowPromise) {
-      lane.windowPromise = new Promise<void>((r) => (lane.windowResolver = r));
+        const batch = lane.pending.splice(0, lane.pending.length);
+        const head = batch[0]!;
+        const merged: DispatchRequest = { ...head, prompt: batch.map((b) => b.prompt).join('\n\n') };
+
+        const ac = new AbortController();
+        lane.current = { ac, promise: this.dispatchOne(merged, ac.signal) };
+        try {
+          await lane.current.promise;
+        } catch {
+          // dispatchOne handles errors via streamer; swallow here so the loop continues.
+        } finally {
+          lane.current = undefined;
+        }
+      }
+    } finally {
+      lane.processing = false;
     }
-    lane.windowTimer = setTimeout(() => {
-      const resolver = lane.windowResolver;
-      lane.windowResolver = undefined;
-      lane.windowPromise = undefined;
-      resolver?.();
-    }, this.windowMs);
-
-    await lane.windowPromise;
-
-    const merged = lane.pending.join('\n\n');
-    lane.pending = [];
-
-    const ac = new AbortController();
-    const promise = this.dispatchOne(
-      { ...req, prompt: merged },
-      ac.signal,
-    ).finally(() => {
-      if (lane.current && lane.current.ac === ac) lane.current = undefined;
-    });
-    lane.current = { ac, promise };
-    await promise;
   }
 
   private getLane(chatId: string): ChatLane {
     let lane = this.lanes.get(chatId);
     if (!lane) {
-      lane = { pending: [], windowTimer: undefined, current: undefined, windowResolver: undefined, windowPromise: undefined };
+      lane = { pending: [], processing: false, current: undefined };
       this.lanes.set(chatId, lane);
     }
     return lane;
@@ -138,9 +127,7 @@ export class Dispatcher {
             streamer.onToolResult(ev.callId, ev.ok);
             break;
           case 'error':
-            if (signal.aborted && signal.reason instanceof PreemptError) {
-              await streamer.onInterrupted('preempt');
-            } else if (signal.aborted && signal.reason instanceof UserStopError) {
+            if (signal.aborted && signal.reason instanceof UserStopError) {
               await streamer.onInterrupted('user_stop');
             } else {
               await streamer.onError(ev.message);
@@ -157,9 +144,7 @@ export class Dispatcher {
         }
       }
     } catch (err) {
-      if (err instanceof PreemptError) {
-        await streamer.onInterrupted('preempt');
-      } else if (err instanceof UserStopError) {
+      if (err instanceof UserStopError) {
         await streamer.onInterrupted('user_stop');
       } else {
         await streamer.onError((err as Error).message);

@@ -111,7 +111,7 @@ export class CodexAdapter implements Adapter {
         yield { type: 'done', sessionId, finalText };
       }
     } catch (err) {
-      if (err instanceof Error && (err.name === 'PreemptError' || err.name === 'UserStopError')) {
+      if (err instanceof Error && err.name === 'UserStopError') {
         throw err;
       }
       yield { type: 'error', message: (err as Error).message, recoverable: false };

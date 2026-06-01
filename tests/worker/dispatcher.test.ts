@@ -37,12 +37,14 @@ describe('Dispatcher (MVP — no preempt)', () => {
     const onSession = vi.fn();
     const d = new Dispatcher({ adapter, makeStreamer: () => streamer, onSessionUpdate: onSession });
 
+    // enqueue now returns immediately; wait for batch window + run to complete.
     await d.enqueue({
       chatId: 'oc_1',
       prompt: 'say hi',
       cwd: '/tmp',
       idleTimeoutMs: 60_000,
     });
+    await new Promise((r) => setTimeout(r, 600));
 
     expect(streamer.start).toHaveBeenCalledTimes(1);
     expect(streamer.onTextDelta).toHaveBeenCalledWith('hi');
