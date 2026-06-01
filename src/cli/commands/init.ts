@@ -7,11 +7,21 @@ import { readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { paths } from '../../config/paths.js';
 import { botAdd } from './bot.js';
+import { scanRegisterApp } from '../../auth/register-app.js';
 
 const APP_ID_RE = /^cli_[A-Za-z0-9]+$/;
 const BOT_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const BACKENDS = ['claude', 'codex', 'gemini'] as const;
 type Backend = (typeof BACKENDS)[number];
+const PROVISION_CHOICES = ['scan', 'manual'] as const;
+type ProvisionChoice = (typeof PROVISION_CHOICES)[number];
+
+export function parseProvisionChoice(input: string): ProvisionChoice | undefined {
+  const trimmed = input.trim().toLowerCase();
+  if (trimmed === '1' || trimmed === 'scan') return 'scan';
+  if (trimmed === '2' || trimmed === 'manual') return 'manual';
+  return undefined;
+}
 
 export function validateAppId(s: string): string | undefined {
   if (!APP_ID_RE.test(s)) return 'must look like cli_<alphanumeric>';
@@ -109,36 +119,15 @@ async function existingBotCount(): Promise<number> {
 const DEV_CONSOLE_URL_LARK = 'https://open.larksuite.com/app';
 const DEV_CONSOLE_URL_FEISHU = 'https://open.feishu.cn/app';
 
-async function addOneBot(): Promise<boolean> {
-  const rl = createInterface({ input: stdin, output: stdout });
+interface AppCreds {
+  appId: string;
+  appSecret: string;
+  tenant: 'lark' | 'feishu';
+}
 
-  console.log('\n— Backend —');
-  BACKENDS.forEach((b, i) => console.log(`  ${i + 1}. ${b}`));
-  let backend: Backend | undefined;
-  while (!backend) {
-    const ans = await rl.question('Pick a backend (1/2/3 or name) [1]: ');
-    backend = parseBackendChoice(ans.trim() || '1');
-    if (!backend) console.log('  invalid choice; try again');
-  }
-
-  let botName: string = '';
-  while (!botName) {
-    const def = `${backend}-bot`;
-    const ans = (await rl.question(`Bot name [${def}]: `)).trim() || def;
-    const err = validateBotName(ans);
-    if (err) {
-      console.log(`  ${err}`);
-      continue;
-    }
-    if (existsSync(paths.botYaml(ans))) {
-      console.log(`  bots/${ans}.yaml already exists; pick another name`);
-      continue;
-    }
-    botName = ans;
-  }
-
+async function promptManualAppCreds(rl: ReturnType<typeof createInterface>): Promise<AppCreds> {
   const tenantAns = (await rl.question('Tenant (lark/feishu) [lark]: ')).trim().toLowerCase() || 'lark';
-  const tenant = tenantAns === 'feishu' ? 'feishu' : 'lark';
+  const tenant: 'lark' | 'feishu' = tenantAns === 'feishu' ? 'feishu' : 'lark';
   const consoleUrl = tenant === 'feishu' ? DEV_CONSOLE_URL_FEISHU : DEV_CONSOLE_URL_LARK;
 
   console.log('');
@@ -173,8 +162,84 @@ async function addOneBot(): Promise<boolean> {
     if (!appSecret) console.log('  cannot be empty');
   }
 
+  return { appId, appSecret, tenant };
+}
+
+async function addOneBot(): Promise<boolean> {
+  const rl = createInterface({ input: stdin, output: stdout });
+
+  console.log('\n— Backend —');
+  BACKENDS.forEach((b, i) => console.log(`  ${i + 1}. ${b}`));
+  let backend: Backend | undefined;
+  while (!backend) {
+    const ans = await rl.question('Pick a backend (1/2/3 or name) [1]: ');
+    backend = parseBackendChoice(ans.trim() || '1');
+    if (!backend) console.log('  invalid choice; try again');
+  }
+
+  let botName: string = '';
+  while (!botName) {
+    const def = `${backend}-bot`;
+    const ans = (await rl.question(`Bot name [${def}]: `)).trim() || def;
+    const err = validateBotName(ans);
+    if (err) {
+      console.log(`  ${err}`);
+      continue;
+    }
+    if (existsSync(paths.botYaml(ans))) {
+      console.log(`  bots/${ans}.yaml already exists; pick another name`);
+      continue;
+    }
+    botName = ans;
+  }
+
+  // Provisioning method
+  console.log('\n— Provisioning method —');
+  console.log('  1. Scan a QR code with Lark mobile app to auto-create a new app under your tenant (recommended)');
+  console.log('  2. Paste an existing App ID + App Secret manually');
+  let provisionChoice: ProvisionChoice | undefined;
+  while (!provisionChoice) {
+    const ans = await rl.question('Pick [1]: ');
+    provisionChoice = parseProvisionChoice(ans.trim() || '1');
+    if (!provisionChoice) console.log('  invalid choice; enter 1 or 2');
+  }
+
+  let creds: AppCreds;
+
+  if (provisionChoice === 'scan') {
+    rl.close();
+    let scanDone = false;
+    while (!scanDone) {
+      try {
+        const registered = await scanRegisterApp();
+        const maskedSecret = registered.appSecret.slice(0, 4) + '****';
+        console.log(`\n✓ App registered successfully.`);
+        console.log(`  App ID:  ${registered.appId}`);
+        console.log(`  Secret:  ${maskedSecret}`);
+        console.log(`  Tenant:  ${registered.tenant}`);
+        creds = { appId: registered.appId, appSecret: registered.appSecret, tenant: registered.tenant };
+        scanDone = true;
+      } catch (scanErr) {
+        console.error(`\nScan-to-create failed: ${(scanErr as Error).message}`);
+        const rl3 = createInterface({ input: stdin, output: stdout });
+        const retryAns = (await rl3.question('Retry scan (r) or switch to manual entry (m)? [r]: ')).trim().toLowerCase();
+        rl3.close();
+        if (retryAns === 'm' || retryAns === 'manual') {
+          const rlManual = createInterface({ input: stdin, output: stdout });
+          creds = await promptManualAppCreds(rlManual);
+          scanDone = true;
+        }
+        // else loop and retry scan
+      }
+    }
+    // creds is guaranteed set when scanDone = true
+    creds = creds!;
+  } else {
+    creds = await promptManualAppCreds(rl);
+  }
+
   try {
-    await botAdd({ name: botName, appId, appSecret, backend });
+    await botAdd({ name: botName, appId: creds.appId, appSecret: creds.appSecret, backend, tenant: creds.tenant });
   } catch (err) {
     console.error(`failed to write bot YAML: ${(err as Error).message}`);
     return false;

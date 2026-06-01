@@ -23,6 +23,7 @@ export interface BotAddOpts {
   appId: string;
   appSecret: string;
   backend: string;
+  tenant?: 'lark' | 'feishu';
 }
 
 export async function botAdd(opts: BotAddOpts): Promise<void> {
@@ -41,7 +42,7 @@ export async function botAdd(opts: BotAddOpts): Promise<void> {
   const body: Record<string, unknown> = {
     name: opts.name,
     enabled: true,
-    lark: { app_id: opts.appId, app_secret: opts.appSecret, tenant: 'lark' },
+    lark: { app_id: opts.appId, app_secret: opts.appSecret, tenant: opts.tenant ?? 'lark' },
     backend: { type: opts.backend, [opts.backend]: backendBlock },
     access: { allowed_users: [], allowed_chats: [], admins: [] },
     behavior: { default_cwd: '~', group_trigger: 'mention', idle_timeout_seconds: 600, max_concurrent_chats: 0 },

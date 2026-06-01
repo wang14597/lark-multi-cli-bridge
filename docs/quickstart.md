@@ -21,7 +21,7 @@ node ./bin/lmcb.mjs init
 The wizard:
 1. Asks you to pick a backend (claude / codex / gemini).
 2. Defaults the bot name to `<backend>-bot` (you can change it).
-3. Tells you how to get `app_id` and `app_secret` from the Lark developer console, and offers to open the browser for you.
+3. **Defaults to scan-to-create**: scan a QR code with the Lark mobile app and Lark auto-creates a new internal-use application under your tenant — no need to visit the developer console. Pick option 2 to paste an existing `app_id` / `app_secret` instead.
 4. Validates and stores everything to `~/.lark-multi-cli-bridge/bots/<name>.yaml` (chmod 600).
 5. Asks whether to add another bot — you can chain three bots in one wizard run.
 

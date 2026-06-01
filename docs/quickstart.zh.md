@@ -21,7 +21,7 @@ node ./bin/lmcb.mjs init
 向导会：
 1. 让你选后端 (claude / codex / gemini)。
 2. 默认 bot 名为 `<backend>-bot`，可改。
-3. 告诉你怎么从 Lark 开发者后台拿 `app_id` 和 `app_secret`，可一键打开浏览器。
+3. **默认走扫码创建**：用飞书/Lark 移动端扫描二维码，Lark 自动在你的租户下创建内部应用，无需访问开发者后台。选项 2 可改为手动粘贴已有 `app_id` / `app_secret`。
 4. 验证后写入 `~/.lark-multi-cli-bridge/bots/<名字>.yaml`（chmod 600）。
 5. 询问是否继续添加下一个 bot——一次向导可链式配 3 个。
 

@@ -47,9 +47,11 @@ botCmd
   .requiredOption('--app-id <id>', 'Lark app id')
   .requiredOption('--app-secret <secret>', 'Lark app secret')
   .requiredOption('--backend <backend>', 'claude | codex | gemini')
-  .action(async (name: string, opts: { appId: string; appSecret: string; backend: string }) => {
+  .option('--tenant <tenant>', 'lark | feishu (default: lark)')
+  .action(async (name: string, opts: { appId: string; appSecret: string; backend: string; tenant?: string }) => {
     try {
-      await botAdd({ name, appId: opts.appId, appSecret: opts.appSecret, backend: opts.backend });
+      const tenant = opts.tenant === 'feishu' ? 'feishu' : opts.tenant === 'lark' ? 'lark' : undefined;
+      await botAdd({ name, appId: opts.appId, appSecret: opts.appSecret, backend: opts.backend, ...(tenant !== undefined ? { tenant } : {}) });
     } catch (err) {
       console.error((err as Error).message);
       process.exit(1);

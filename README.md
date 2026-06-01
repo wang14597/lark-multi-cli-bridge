@@ -27,13 +27,13 @@ Full design: [docs/architecture.md](docs/architecture.md). Canonical spec under 
 
 ## Quickstart
 
-The fastest way is the interactive wizard:
-
 ```bash
 node ./bin/lmcb.mjs init
 ```
 
-It walks you through choosing a backend (claude / codex / gemini), getting the Lark `app_id` + `app_secret` from the developer console, and writing the bot YAML. Run it again to add more bots.
+The wizard defaults to scanning a QR code with the Lark mobile app — Lark will auto-create a new internal-use application under your tenant, return its `app_id` and `app_secret`, and the bridge writes them to disk for you. No need to visit the developer console.
+
+Pick option 2 in the wizard if you want to paste an existing `app_id` / `app_secret` instead.
 
 For full quickstart see [docs/quickstart.md](docs/quickstart.md).
 

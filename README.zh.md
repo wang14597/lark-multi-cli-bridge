@@ -27,13 +27,13 @@ English: [README.md](README.md)
 
 ## 快速开始
 
-推荐用交互式向导：
-
 ```bash
 node ./bin/lmcb.mjs init
 ```
 
-它会引导你选择后端 (claude / codex / gemini)、从 Lark 开发者后台拿 `app_id` + `app_secret`、并写入 bot YAML。再跑一次就可以加更多 bot。
+向导默认走扫码流程：用飞书/Lark 移动端扫描二维码，Lark 会在你的租户下自动创建一个内部应用并返回 `app_id` 和 `app_secret`，bridge 直接写入本地配置——无需访问开发者后台。
+
+如需粘贴已有 `app_id` / `app_secret`，在向导中选择选项 2 即可。
 
 完整教程见 [docs/quickstart.zh.md](docs/quickstart.zh.md)。
 
