@@ -19,6 +19,7 @@ export interface GeminiAdapterOpts {
   cliPath?: string;
   model?: string;
   extraArgs?: string[];
+  appendSystemPrompt?: string;
 }
 
 export class GeminiAdapter implements Adapter {
@@ -42,7 +43,12 @@ export class GeminiAdapter implements Adapter {
   }
 
   async *run(ctx: RunContext): AsyncIterable<AdapterEvent> {
-    const args = ['--prompt-interactive=false', '--prompt', ctx.prompt];
+    // gemini --prompt has no native system-instruction flag, so prepend
+    // the system prompt to ctx.prompt with a '\n\n---\n\n' separator.
+    const finalPrompt = this.opts.appendSystemPrompt
+      ? `${this.opts.appendSystemPrompt}\n\n---\n\n${ctx.prompt}`
+      : ctx.prompt;
+    const args = ['--prompt-interactive=false', '--prompt', finalPrompt];
     if (this.opts.model) args.push('--model', this.opts.model);
     if (ctx.sessionId) args.push('--chat-id', ctx.sessionId);
     args.push(...(this.opts.extraArgs ?? []));

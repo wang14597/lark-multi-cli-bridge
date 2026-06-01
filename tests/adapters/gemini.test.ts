@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: MIT
 import { describe, it, expect } from 'vitest';
-import { stripAnsi, chunkToEvents } from '../../src/adapters/gemini.js';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { GeminiAdapter, stripAnsi, chunkToEvents } from '../../src/adapters/gemini.js';
+import type { RunContext } from '../../src/adapters/types.js';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 describe('GeminiAdapter.stripAnsi', () => {
   it('removes ANSI escape sequences', () => {
@@ -12,5 +19,58 @@ describe('GeminiAdapter.chunkToEvents', () => {
   it('emits a text-delta event with the input unchanged when no ANSI', () => {
     const evs = [...chunkToEvents('plain')];
     expect(evs).toEqual([{ type: 'text-delta', text: 'plain' }]);
+  });
+});
+
+describe('GeminiAdapter appendSystemPrompt', () => {
+  // The echo-args.sh fixture writes argv (NUL-delimited) to the file
+  // referenced by env var ECHO_ARGS_OUT, then exits 0 with no stdout.
+  // The empty-stdout run terminates cleanly with a `done` event after
+  // the stream ends.
+  const ECHO_ARGS_SH = join(HERE, '__fixtures__/echo-args.sh');
+
+  async function runAndCaptureArgs(adapter: GeminiAdapter, prompt: string): Promise<string[]> {
+    const tmp = mkdtempSync(join(tmpdir(), 'gemini-test-'));
+    const outFile = join(tmp, 'args.txt');
+    try {
+      const ctx: RunContext = {
+        prompt,
+        cwd: tmp,
+        signal: new AbortController().signal,
+        idleTimeoutMs: 5000,
+        env: { ECHO_ARGS_OUT: outFile },
+      };
+      // drain the iterator so run() executes
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _ of adapter.run(ctx)) {
+        /* drain */
+      }
+      const raw = readFileSync(outFile, 'utf8');
+      // NUL-delimited; trailing NUL -> drop the empty last element
+      return raw.split('\0').slice(0, -1);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+
+  it('prepends opts.appendSystemPrompt to ctx.prompt with separator', async () => {
+    const adapter = new GeminiAdapter({
+      cliPath: ECHO_ARGS_SH,
+      appendSystemPrompt: 'SYSTEM-INSTRUCTIONS',
+    });
+    const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
+    const promptIdx = args.indexOf('--prompt');
+    expect(promptIdx).toBeGreaterThanOrEqual(0);
+    expect(args[promptIdx + 1]).toBe('SYSTEM-INSTRUCTIONS\n\n---\n\nUSER-PROMPT');
+  });
+
+  it('passes ctx.prompt unchanged when appendSystemPrompt is undefined', async () => {
+    const adapter = new GeminiAdapter({
+      cliPath: ECHO_ARGS_SH,
+    });
+    const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
+    const promptIdx = args.indexOf('--prompt');
+    expect(promptIdx).toBeGreaterThanOrEqual(0);
+    expect(args[promptIdx + 1]).toBe('USER-PROMPT');
   });
 });
