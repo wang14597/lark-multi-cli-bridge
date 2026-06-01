@@ -4,6 +4,21 @@
 
 English: [CHANGELOG.md](CHANGELOG.md)
 
+## [v0.5.2] - 2026-06-01
+
+### 修复
+
+- **群内 `@bot + 多行文本` 不再静默丢弃。** Lark 会将此类消息从 `text` 自动升级为 `post`（富文本）；原解析器对 `post` 返回空字符串，导致 worker 静默忽略消息。`extractPromptFromContent` 现在将 `post` 展平为 Markdown（段落用 `\n` 拼接、`@name`、`[文字](url)`、行内代码、代码块）。
+- **per-chat session 隔离** 本身已通过 `chat_id` 为键实现；上述修复使新群聊 session 能真正创建（之前因空文本检查被拦截，session 始终未生成）。
+
+### 新增
+
+- `extractPromptFromContent(messageType, content, mentions)` — 纯函数，处理所有 Lark 消息类型，可独立测试。
+- `post` 内联 `img` 标签会追加 `RawAttachment` 并在文本中插入 `[image]`。
+- `audio` 消息生成 `[audio N seconds]` / `[audio]` 标记，避免静默丢弃。
+- `merge_forward` 消息生成 `[merge_forward N messages]` 标记（完整展平内部消息需额外 Lark API 调用，列为 TODO）。
+- 消息处理器顶部添加 `log.info({ chatId, chatType, sender }, 'message received')` 日志，便于生产环境验证 per-chat session 隔离。
+
 ## [v0.5.1] - 2026-06-01
 
 ### 新增

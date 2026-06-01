@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file. Format insp
 
 中文版: [CHANGELOG.zh.md](CHANGELOG.zh.md)
 
+## [v0.5.2] - 2026-06-01
+
+### Fixed
+
+- **Group `@bot + multi-line` no longer silences the bot.** Lark auto-upgrades such messages from `text` to `post` (rich text); the previous parser returned an empty string for `post`, causing the worker to silently drop the message. `extractPromptFromContent` now flattens `post` to Markdown (paragraphs joined by `\n`, `@name`, `[text](url)`, inline code, code blocks).
+- **Per-chat session isolation** was already keyed by `chat_id`; the fix above makes new group-chat sessions actually materialize (they were invisible before because the empty-text guard blocked them).
+
+### Added
+
+- `extractPromptFromContent(messageType, content, mentions)` — pure function that handles all Lark message types, independently testable.
+- `post` inline `img` tags push a `RawAttachment` and emit `[image]` in the text.
+- `audio` messages emit `[audio N seconds]` / `[audio]` marker so they are not silently dropped.
+- `merge_forward` messages emit `[merge_forward N messages]` marker (full flatten of inner messages is a TODO requiring an extra Lark API call).
+- `log.info({ chatId, chatType, sender }, 'message received')` at top of message handler to verify per-chat session isolation in the wild.
+
 ## [v0.5.1] - 2026-06-01
 
 ### Added

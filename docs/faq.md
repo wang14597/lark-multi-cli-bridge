@@ -41,5 +41,8 @@ A: At 3+ tool calls, lmcb collapses earlier ones into a summary panel because ea
 **Q: Can I cancel a run mid-stream?**
 A: Yes, in two ways. Send `/stop` as a text message in the chat, or click the **⏹ 终止** button on the streaming card. Both route to `dispatcher.abort(chatId)`, which sends a `UserStopError` to the in-flight run and renders an "interrupted" final state on the card.
 
+**Q: Does the bot respond in groups?**
+A: Yes, but only when @-mentioned (set `behavior.group_trigger: always` to relax this). Multi-line and rich-text (`post`) messages are automatically flattened to a prompt, so group @-mentions followed by newlines work correctly.
+
 **Q: Can I customize the streaming card look?**
 A: Yes — see `src/lark/card-builder.ts` (`renderRunCard`) and `src/lark/run-state.ts`. Both follow Feishu CardKit 2.0 schema; tweak elements, headers, and borders to taste.

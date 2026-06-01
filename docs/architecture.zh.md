@@ -50,6 +50,21 @@ English: [architecture.md](architecture.md)
 | `telemetry/` | pino + pino-roll 结构化日志 |
 | `util/` | 原子文件写、重试辅助、异步迭代器工具、信号管道 |
 
+## 支持的消息类型
+
+`src/lark/message-parse.ts` 将 Lark 所有 `message_type` 变体统一规范化为一个 `{ text, attachments }` 对，再传递给适配器：
+
+| `message_type` | Prompt 输出 |
+|----------------|------------|
+| `text` | 原始 `.text` 字段 |
+| `post`（富文本） | 展平为 Markdown——`@name`、`[文字](url)`、`` `code` ``、代码块、多段落以 `\n` 拼接。内联图片追加 `RawAttachment` 并在文本中插入 `[image]` |
+| `image` | 空文本 + `RawAttachment`（下载后注入为 `[Attached image: …]`） |
+| `file` | 空文本 + `RawAttachment`（下载后注入为 `[Attached file: …]`） |
+| `merge_forward` | `[merge_forward N messages]` 标记（完整展平待后续实现——TODO） |
+| `audio` | `[audio N seconds]` 或 `[audio]` 标记（Lark 不提供转写文本） |
+
+`extractPromptFromContent(messageType, content, mentions)` 纯函数负责消息类型到文本的转换，可独立测试。
+
 v0.4.0 在 `src/lark/` 中新增的关键文件：
 
 - **`run-state.ts`** — `RunState` 数据模型 + 变更辅助函数（跟踪 blocks、reasoning、tools、terminal 标志、footer 文本）。

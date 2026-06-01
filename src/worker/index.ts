@@ -151,6 +151,8 @@ export async function runWorker(botName: string): Promise<void> {
   });
 
   ws.on('message', async (msg: IngressMessage) => {
+    log.info({ chatId: msg.chatId, chatType: msg.chatType, sender: msg.senderOpenId }, 'message received');
+
     if (!msg.text.trim()) return;
 
     if (!isAuthorized({ access: bot.access, senderOpenId: msg.senderOpenId, chatId: msg.chatId, ...(appOwnerOpenId ? { appOwnerOpenId } : {}) })) {

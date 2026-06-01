@@ -50,6 +50,21 @@ Each worker holds a persistent Lark WebSocket connection for its bot identity. I
 | `telemetry/` | pino + pino-roll structured logging |
 | `util/` | Atomic file writes, retry helpers, async iterator utilities, signal plumbing |
 
+## Supported message types
+
+`src/lark/message-parse.ts` normalises all Lark `message_type` variants into a single `{ text, attachments }` pair before the prompt reaches the adapter:
+
+| `message_type` | Prompt output |
+|----------------|--------------|
+| `text` | Raw `.text` field |
+| `post` (rich text) | Flattened Markdown — `@name`, `[text](url)`, `` `code` ``, code blocks, multi-paragraph joins with `\n`. Inline images push a `RawAttachment` and emit `[image]` |
+| `image` | Empty text + `RawAttachment` (downloaded and injected as `[Attached image: …]`) |
+| `file` | Empty text + `RawAttachment` (downloaded and injected as `[Attached file: …]`) |
+| `merge_forward` | `[merge_forward N messages]` marker (full flatten deferred — TODO) |
+| `audio` | `[audio N seconds]` or `[audio]` marker (Lark does not provide a transcript) |
+
+The `extractPromptFromContent(messageType, content, mentions)` pure function handles the type-to-text conversion and is independently testable.
+
 Notable v0.4.0 additions inside `src/lark/`:
 
 - **`run-state.ts`** — `RunState` data model + mutation helpers (tracks blocks, reasoning, tools, terminal flag, footer text).

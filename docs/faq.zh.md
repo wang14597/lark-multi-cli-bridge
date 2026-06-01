@@ -41,5 +41,8 @@ A：在 3 个以上工具调用时，lmcb 会把旧的折叠进汇总面板，�
 **Q：能在对话进行中取消运行吗？**
 A：可以，有两种方式。在聊天中发送 `/stop` 文本消息，或点击流式卡片上的 **⏹ 终止** 按钮。两种方式都会路由到 `dispatcher.abort(chatId)`，向正在运行的任务发送 `UserStopError` 并在卡片上渲染"已中断"的终态。
 
+**Q：bot 能在群里回复吗？**
+A：可以，但仅在被 @提及时响应（设置 `behavior.group_trigger: always` 可放宽此限制）。多行和富文本（`post`）消息会自动展平成 prompt，因此群内 @bot 后换行的消息可正常处理。
+
 **Q：能自定义流式卡片的样式吗？**
 A：可以——参见 `src/lark/card-builder.ts`（`renderRunCard`）和 `src/lark/run-state.ts`。两者均遵循飞书 CardKit 2.0 schema，可自由调整元素、标题和边框样式。
