@@ -24,6 +24,7 @@ function fakeStreamer() {
     onToolResult: vi.fn(),
     onError: vi.fn(async () => {}),
     onDone: vi.fn(async () => {}),
+    onInterrupted: vi.fn(async () => {}),
   };
 }
 

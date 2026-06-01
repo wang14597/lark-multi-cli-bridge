@@ -70,6 +70,12 @@ export class CardStreamer {
     }
   }
 
+  async onInterrupted(_reason: 'preempt' | 'user_stop'): Promise<void> {
+    finalize(this.state, { kind: 'interrupted' });
+    this.dirty = true;
+    await this.flush({ force: true });
+  }
+
   async onError(message: string): Promise<void> {
     finalize(this.state, { kind: 'error', errorMsg: message });
     this.dirty = true;

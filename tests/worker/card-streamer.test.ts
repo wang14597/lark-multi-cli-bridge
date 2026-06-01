@@ -101,4 +101,19 @@ describe('CardStreamer (new RunState-driven)', () => {
     expect(createPayload).toContain('"streaming_mode":true');
     vi.useRealTimers();
   });
+
+  it('onInterrupted produces a card containing 已被中断', async () => {
+    vi.useFakeTimers();
+    const sink = fakeSink();
+    const streamer = new CardStreamer({ sink, throttleMs: 500, throttleChars: 50 });
+    await streamer.start();
+    await streamer.onTextDelta('partial text');
+    await streamer.onInterrupted('preempt');
+    await vi.runAllTimersAsync();
+    const last = sink.sent[sink.sent.length - 1];
+    const lastJson = JSON.stringify(last?.payload);
+    expect(lastJson).toContain('已被中断');
+    expect(lastJson).not.toContain('agent 失败');
+    vi.useRealTimers();
+  });
 });

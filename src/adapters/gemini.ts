@@ -65,6 +65,9 @@ export class GeminiAdapter implements Adapter {
       }
       yield { type: 'done', sessionId: synthSessionId, finalText };
     } catch (err) {
+      if (err instanceof Error && (err.name === 'PreemptError' || err.name === 'UserStopError')) {
+        throw err;
+      }
       yield { type: 'error', message: (err as Error).message, recoverable: false };
     }
   }

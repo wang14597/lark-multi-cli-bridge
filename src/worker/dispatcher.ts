@@ -2,11 +2,27 @@
 import type { Adapter } from '../adapters/types.js';
 import type { CardStreamer } from './card-streamer.js';
 
+export class PreemptError extends Error {
+  readonly preempt = true;
+  constructor() {
+    super('preempted by new message');
+    this.name = 'PreemptError';
+  }
+}
+
+export class UserStopError extends Error {
+  readonly userStop = true;
+  constructor() {
+    super('user /stop');
+    this.name = 'UserStopError';
+  }
+}
+
 export interface DispatcherOpts {
   adapter: Adapter;
   makeStreamer: (chatId: string) => Pick<
     CardStreamer,
-    'start' | 'onTextDelta' | 'onToolCall' | 'onToolResult' | 'onError' | 'onDone'
+    'start' | 'onTextDelta' | 'onToolCall' | 'onToolResult' | 'onError' | 'onDone' | 'onInterrupted'
   >;
   onSessionUpdate: (chatId: string, sessionId: string) => void;
   batchWindowMs?: number;
@@ -41,7 +57,7 @@ export class Dispatcher {
   abort(chatId: string): boolean {
     const lane = this.lanes.get(chatId);
     if (!lane?.current) return false;
-    lane.current.ac.abort(new Error('user /stop'));
+    lane.current.ac.abort(new UserStopError());
     return true;
   }
 
@@ -49,7 +65,7 @@ export class Dispatcher {
     const lane = this.getLane(req.chatId);
 
     if (lane.current) {
-      lane.current.ac.abort(new Error('preempted by new message'));
+      lane.current.ac.abort(new PreemptError());
       await lane.current.promise.catch(() => {});
     }
 
@@ -122,7 +138,13 @@ export class Dispatcher {
             streamer.onToolResult(ev.callId, ev.ok);
             break;
           case 'error':
-            await streamer.onError(ev.message);
+            if (signal.aborted && signal.reason instanceof PreemptError) {
+              await streamer.onInterrupted('preempt');
+            } else if (signal.aborted && signal.reason instanceof UserStopError) {
+              await streamer.onInterrupted('user_stop');
+            } else {
+              await streamer.onError(ev.message);
+            }
             break;
           case 'done':
             this.opts.onSessionUpdate(req.chatId, ev.sessionId);
@@ -135,7 +157,13 @@ export class Dispatcher {
         }
       }
     } catch (err) {
-      await streamer.onError((err as Error).message);
+      if (err instanceof PreemptError) {
+        await streamer.onInterrupted('preempt');
+      } else if (err instanceof UserStopError) {
+        await streamer.onInterrupted('user_stop');
+      } else {
+        await streamer.onError((err as Error).message);
+      }
     }
   }
 }
