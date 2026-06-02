@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { describe, it, expect, vi } from 'vitest';
-import { ensureLarkProfile } from '../../src/lark/lark-cli-provision.js';
+import { ensureLarkProfile, provisionLarkShim } from '../../src/lark/lark-cli-provision.js';
 
 const bot = {
   name: 'claude-bot',
@@ -113,5 +113,46 @@ describe('ensureLarkProfile', () => {
     await expect(
       ensureLarkProfile(bot, { runLarkCli, writeFile: vi.fn(), mkdirp: vi.fn() }),
     ).rejects.toThrow(/profile list failed.*nope/);
+  });
+});
+
+describe('provisionLarkShim', () => {
+  it('writes shim with exec line bound to real lark-cli + bot app_id', async () => {
+    const writes: Array<{ path: string; content: string; mode: number }> = [];
+    const mkdirs: string[] = [];
+    const writeFile = vi.fn(async (path: string, content: string, mode: number) => {
+      writes.push({ path, content, mode });
+    });
+    const mkdirp = vi.fn(async (path: string) => {
+      mkdirs.push(path);
+    });
+
+    const shimPath = await provisionLarkShim(
+      bot,
+      '/tmp/shims/claude-bot',
+      '/usr/local/bin/lark-cli',
+      { writeFile, mkdirp },
+    );
+
+    expect(shimPath).toBe('/tmp/shims/claude-bot/lark-cli');
+    expect(mkdirs).toEqual(['/tmp/shims/claude-bot']);
+    expect(writes.length).toBe(1);
+    expect(writes[0]!.mode).toBe(0o755);
+    expect(writes[0]!.path).toBe('/tmp/shims/claude-bot/lark-cli');
+    expect(writes[0]!.content).toContain('#!/usr/bin/env bash');
+    expect(writes[0]!.content).toContain(
+      'exec "/usr/local/bin/lark-cli" --profile "cli_aa96561a57b81ed1" "$@"',
+    );
+  });
+
+  it('rejects realLarkCliPath that contains a double-quote (shim injection guard)', async () => {
+    await expect(
+      provisionLarkShim(
+        bot,
+        '/tmp/shims/x',
+        '/usr/local/bin/lark"; rm -rf /; "cli',
+        { writeFile: vi.fn(), mkdirp: vi.fn() },
+      ),
+    ).rejects.toThrow(/unsafe lark-cli path/);
   });
 });
