@@ -33,6 +33,26 @@ English: [architecture.md](architecture.md)
 
 每个 worker 以独立 bot 身份维持持久的 Lark WebSocket 长连接。消息处理完全在 worker 进程内完成——supervisor 不感知消息内容。
 
+### lmcb 如何为 lark-cli 子进程隔离 bot 身份
+
+LLM 子进程（claude / codex / gemini）通常会调用 `lark-cli` 来发消息、列群成员等。
+每个 lmcb bot 需要使用自己的 Lark app 身份——若不做隔离，每个 bot 都会悄悄借用
+本机当前默认的 `lark-cli` profile，造成 bot 之间的身份串号。
+
+lmcb 通过一个 **PATH shim** 来锁定身份：
+
+1. worker 启动时，`ensureLarkProfile(bot)` 以 bot 的 `app_id` 为名幂等注册一个
+   `lark-cli profile`（使用 `--app-secret-stdin`，确保 secret 不出现在 argv 里）。
+2. `provisionLarkShim(bot)` 在 `~/.lark-multi-cli-bridge/shims/<bot>/lark-cli`
+   写入一个可执行包装脚本，内部 `exec` 真实的 `lark-cli` 二进制并强制带上
+   `--profile <app_id>` 参数。
+3. dispatcher 把 `PATH=<shim-dir>:$PATH` 注入到每个 LLM 子进程，子进程里所有
+   `lark-cli` 调用都会透明地走到正确的 profile。
+
+此前曾尝试通过 `LARKSUITE_CLI_APP_ID/SECRET/BRAND` 环境变量注入实现隔离
+（commit ae97924），但在 lark-cli 1.0.43 中证实不可行：这些环境变量虽然被
+识别，但永远换不出可用的 bot token。
+
 ## 模块映射
 
 | 模块（`src/`） | 职责 |
@@ -129,6 +149,7 @@ Worker 的 `Dispatcher` 把事件喂给 `CardStreamer`，后者以 500 ms 或 50
 ├── logs/supervisor.log
 ├── logs/workers/<bot>/YYYY-MM-DD.log   （按日轮转）
 ├── media/<chat_id>/<file>              （附件——永久保留）
+├── shims/<bot>/lark-cli                （per-bot PATH shim，0755）
 └── ipc.sock                            （正常关闭后删除）
 ```
 

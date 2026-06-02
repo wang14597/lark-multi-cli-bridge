@@ -33,6 +33,30 @@ See the canonical design document under `docs/superpowers/specs/` for the full s
 
 Each worker holds a persistent Lark WebSocket connection for its bot identity. Inbound messages are handled entirely inside that worker process — the supervisor does not see message content.
 
+### How lmcb isolates bot identity for lark-cli children
+
+The LLM subprocess (claude / codex / gemini) typically calls `lark-cli` to
+send messages, list members, etc. Each lmcb bot needs its own Lark app
+identity — without isolation, every bot would silently borrow whichever
+`lark-cli` profile happens to be the local default, leaking cross-bot
+identity.
+
+lmcb pins identity via a **PATH shim**:
+
+1. At worker startup, `ensureLarkProfile(bot)` idempotently registers a
+   `lark-cli profile` named after the bot's `app_id` (using
+   `--app-secret-stdin` so secrets never appear in argv).
+2. `provisionLarkShim(bot)` writes an executable wrapper at
+   `~/.lark-multi-cli-bridge/shims/<bot>/lark-cli` that `exec`s the real
+   `lark-cli` binary with `--profile <app_id>` prepended.
+3. The dispatcher injects `PATH=<shim-dir>:$PATH` into every LLM child, so
+   any `lark-cli` call inside the child transparently routes through the
+   correct profile.
+
+This was migrated from a `LARKSUITE_CLI_APP_ID/SECRET/BRAND` env-injection
+approach (commit ae97924) which proved non-functional in lark-cli 1.0.43:
+the env vars are recognised but never mint a usable bot token.
+
 ## Module map
 
 | Module (`src/`) | Responsibility |
@@ -129,6 +153,7 @@ Tool panels auto-collapse at 3 or more calls to stay within Feishu's ~30 KB per-
 ├── logs/supervisor.log
 ├── logs/workers/<bot>/YYYY-MM-DD.log   (rotated daily)
 ├── media/<chat_id>/<file>              (attachments — kept indefinitely)
+├── shims/<bot>/lark-cli                (per-bot PATH shim, 0755)
 └── ipc.sock                            (removed on clean shutdown)
 ```
 
