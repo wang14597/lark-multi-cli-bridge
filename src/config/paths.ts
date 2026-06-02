@@ -26,10 +26,11 @@ export const paths = {
   mediaChat(chatId: string): string {
     return join(root, 'media', chatId);
   },
+  shimsRoot: join(root, 'shims'),
   shimsDir(botName: string): string {
-    if (botName.includes('/') || botName.includes('\\') || botName.includes('..')) {
+    if (!botName || botName.includes('/') || botName.includes('\\') || botName.includes('..')) {
       throw new Error(`invalid bot name: ${botName}`);
     }
-    return join(homedir(), '.lark-multi-cli-bridge', 'shims', botName);
+    return join(root, 'shims', botName);
   },
 } as const;

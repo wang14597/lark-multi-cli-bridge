@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { describe, it, expect } from 'vitest';
 import { paths } from '../../src/config/paths.js';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 describe('paths', () => {
@@ -23,15 +22,23 @@ describe('paths', () => {
   });
 });
 
+describe('paths.shimsRoot', () => {
+  it('shimsRoot is <root>/shims', () => {
+    expect(paths.shimsRoot).toBe(join(paths.root, 'shims'));
+  });
+});
+
 describe('paths.shimsDir', () => {
-  it('returns ~/.lark-multi-cli-bridge/shims/<bot>', () => {
-    expect(paths.shimsDir('codex-bot')).toBe(
-      join(homedir(), '.lark-multi-cli-bridge', 'shims', 'codex-bot'),
-    );
+  it('returns <root>/shims/<bot>', () => {
+    expect(paths.shimsDir('codex-bot')).toBe(join(paths.root, 'shims', 'codex-bot'));
   });
 
   it('rejects bot names containing path separators', () => {
     expect(() => paths.shimsDir('../etc')).toThrow();
     expect(() => paths.shimsDir('a/b')).toThrow();
+  });
+
+  it('rejects empty bot name', () => {
+    expect(() => paths.shimsDir('')).toThrow();
   });
 });
