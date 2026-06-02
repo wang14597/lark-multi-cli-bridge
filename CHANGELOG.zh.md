@@ -4,6 +4,24 @@
 
 English: [CHANGELOG.md](CHANGELOG.md)
 
+## [未发布]
+
+### 修复
+
+- **多 bot 场景下 lark-cli 身份正确隔离。** 上一版引入的 `LARKSUITE_CLI_APP_ID/SECRET/BRAND` 环境注入方案（v0.7.0）在 lark-cli 1.0.43+ 上其实不工作：这些 env 变量进入"external credentials"模式但永远换不出可用的 bot token，每个 bot 都会悄悄退回到本机 `lark-cli auth login` 留下的默认 profile。新方案：worker 启动时 `ensureLarkProfile(bot)` 为每个 bot 注册 `lark-cli profile`（走 `profile add --app-secret-stdin`，secret 不进 argv），`provisionLarkShim(bot)` 在 `~/.lark-multi-cli-bridge/shims/<bot>/lark-cli` 写出 PATH shim 强制带上 `--profile <app_id>`，dispatcher 把该 shim 目录前置到每个 LLM 子进程的 `PATH`。多 bot 部署下所有 `lark-cli` 调用都透明绑定到正确身份。详见 `docs/architecture.zh.md` → "lmcb 如何为 lark-cli 子进程隔离 bot 身份"。
+- **`lark-cli profile list` 在 1.0.43/1.0.45 不再因 `unknown flag: --format` 失败** —— `profile list` 默认就吐 JSON，根本没有 `--format` flag。
+
+### 变更
+
+- **工具调用渲染从「每工具一个折叠面板」改为「单一 blockquote 列表」。** 每个工具渲染为 `> ✅ **Tool** — summary`，连续工具共享同一个 blockquote 元素。失败的工具留在 blockquote 内（`> ↳ <首行输出>`，截断 150 字符）——不再有红框面板。运行中的最后一个工具仍保留一个灰色 live `_运行中…_` 面板，让长任务可观察。完整工具明细（input + output、堆栈）查 worker 日志。详见 `docs/architecture.zh.md` → "工具调用渲染"。
+
+### 内部
+
+- 新增 `src/lark/lark-cli-provision.ts`（profile 幂等注册、shim 写入、`resolveRealLarkCli` 通过 `path.resolve` 归一拒绝 shim 递归调用、内置 `which` helper）。
+- `paths.shimsDir(botName)` 和 `paths.shimsRoot` 走 `LMCB_HOME`，沙箱运行和测试隔离不受影响。
+- Shim 内部使用单引号 `exec '<path>' --profile '<app_id>' "$@"`，防止 `app_id` 或二进制路径含 `'` / `\n` 时的注入。
+- `Dispatcher.extraEnv` 的 JSDoc 与 `tests/worker/dispatcher-extra-env.test.ts` 顶部注释更新为 PATH shim 模型（旧版指向 `LARKSUITE_CLI_*`）。
+
 ## [v0.5.2] - 2026-06-01
 
 ### 修复

@@ -92,8 +92,8 @@ The `extractPromptFromContent(messageType, content, mentions)` pure function han
 Notable v0.4.0 additions inside `src/lark/`:
 
 - **`run-state.ts`** — `RunState` data model + mutation helpers (tracks blocks, reasoning, tools, terminal flag, footer text).
-- **`tool-render.ts`** — `toolHeaderText` / `toolBodyMd` helpers for tool-call panel rendering.
-- **`card-builder.ts`** — `renderRunCard` rewritten to match `feishu-claude-code-bridge`'s polished look: no header bar, `streaming_mode` toggle, collapsible reasoning and tool panels, footer status, terminal-state note, stop button.
+- **`tool-render.ts`** — `toolHeaderText` / `toolBodyMd` helpers; `toolHeaderText` is the canonical single-line `✅ **Tool** — summary` format reused by the blockquote rendering path.
+- **`card-builder.ts`** — `renderRunCard` builds the streaming card: no header bar, `streaming_mode` toggle, collapsible reasoning panel, **blockquote-based tool list** (see "Tool-call rendering" below), footer status, terminal-state note, stop button.
 
 ## Adapter event stream
 
@@ -121,14 +121,30 @@ The worker's `Dispatcher` aggregates events into a `CardStreamer`, which throttl
 |-------|-------------|
 | `blocks` | Ordered list of rendered Markdown text blocks |
 | `reasoning` | Accumulated thinking text (shown in collapsible panel) |
-| `tools` | Array of tool-call panels (header + body); auto-collapses older ones at 3+ calls |
+| `tools` | Array of tool calls; rendered as a single blockquote markdown element, one line per tool |
 | `terminal` | Whether the run has ended (switches card out of `streaming_mode`) |
 | `footer` | Status line shown at the bottom of the card |
 | `stopButton` | Whether the stop button is visible |
 
 When `terminal` becomes true, the card is finalized with a terminal-state note and the stop button is removed.
 
-Tool panels auto-collapse at 3 or more calls to stay within Feishu's ~30 KB per-element card limit. Full tool details are always available in the worker log files.
+### Tool-call rendering
+
+Consecutive tool calls collapse into a single markdown **blockquote** element (one line per tool) so the card stays visually light:
+
+```
+> ✅ **Read** — src/lark/card-builder.ts
+> ❌ **Bash** — pnpm test
+> ↳ AssertionError: expected foo to equal bar
+> ✅ **Write** — src/lark/card-builder.ts
+```
+
+Two exceptions promote a tool back into its own visual block:
+
+- **Errors** render their first non-empty output line as a `↳` follow-up inside the same blockquote (capped at 150 chars; full stack stays in the worker log).
+- **The last tool while the run is still in flight** renders as a grey `collapsible_panel` with the live `_运行中…_` body, so long tasks remain observable. It collapses back to a blockquote line once it completes.
+
+Tool detail (full input + output) is intentionally not surfaced in the card — it's always available in `~/.lark-multi-cli-bridge/logs/workers/<bot>/YYYY-MM-DD.log`.
 
 ## IPC mechanism
 

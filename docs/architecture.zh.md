@@ -88,8 +88,8 @@ lmcb 通过一个 **PATH shim** 来锁定身份：
 v0.4.0 在 `src/lark/` 中新增的关键文件：
 
 - **`run-state.ts`** — `RunState` 数据模型 + 变更辅助函数（跟踪 blocks、reasoning、tools、terminal 标志、footer 文本）。
-- **`tool-render.ts`** — `toolHeaderText` / `toolBodyMd` 工具调用面板渲染辅助。
-- **`card-builder.ts`** — `renderRunCard` 重写，对齐 `feishu-claude-code-bridge` 的精美风格：无头部栏、`streaming_mode` 切换、可折叠思考面板和工具面板、底部状态栏、终态备注、停止按钮。
+- **`tool-render.ts`** — `toolHeaderText` / `toolBodyMd` 辅助；`toolHeaderText` 输出统一的单行 `✅ **Tool** — summary` 格式，被 blockquote 渲染路径复用。
+- **`card-builder.ts`** — `renderRunCard` 构建流式卡片：无头部栏、`streaming_mode` 切换、可折叠思考面板、**基于 blockquote 的工具调用列表**（详见下文"工具调用渲染"）、底部状态栏、终态备注、停止按钮。
 
 ## 适配器事件流
 
@@ -117,14 +117,30 @@ Worker 的 `Dispatcher` 把事件喂给 `CardStreamer`，后者以 500 ms 或 50
 |------|------|
 | `blocks` | 已渲染 Markdown 文本块的有序列表 |
 | `reasoning` | 累积的思考文本（显示在可折叠面板中） |
-| `tools` | 工具调用面板数组（标题 + 正文）；3 个以上自动折叠旧面板 |
+| `tools` | 工具调用数组；统一渲染成一个 markdown blockquote 元素，每个工具一行 |
 | `terminal` | 运行是否已结束（将卡片切出 `streaming_mode`） |
 | `footer` | 显示在卡片底部的状态行 |
 | `stopButton` | 停止按钮是否可见 |
 
 `terminal` 变为 true 后，卡片以终态备注收尾并移除停止按钮。
 
-为避免超过飞书单个元素约 30 KB 的限制，工具面板在 3 个以上时自动折叠旧条目。完整工具细节始终可在 worker 日志文件中查看。
+### 工具调用渲染
+
+连续的工具调用合并到一个 markdown **blockquote** 元素中（每行一个工具），让卡片视觉上保持轻盈：
+
+```
+> ✅ **Read** — src/lark/card-builder.ts
+> ❌ **Bash** — pnpm test
+> ↳ AssertionError: expected foo to equal bar
+> ✅ **Write** — src/lark/card-builder.ts
+```
+
+两个例外会让工具被单独提升为视觉块：
+
+- **失败的工具** 把首行非空输出渲染为同 blockquote 内的 `↳` 跟随行（截断到 150 字符；完整堆栈仍在 worker 日志）。
+- **运行尚未结束时最后一个工具** 渲染为一个灰色 `collapsible_panel`，含 live `_运行中…_` body，让长任务可观察。该工具结束后会回退到 blockquote 单行。
+
+工具完整 input + output 不在卡片中展示——查看请到 `~/.lark-multi-cli-bridge/logs/workers/<bot>/YYYY-MM-DD.log`。
 
 ## IPC 机制
 

@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file. Format insp
 
 中文版: [CHANGELOG.zh.md](CHANGELOG.zh.md)
 
+## [Unreleased]
+
+### Fixed
+
+- **Per-bot lark-cli identity is now correctly enforced.** The previous `LARKSUITE_CLI_APP_ID/SECRET/BRAND` env injection (introduced in v0.7.0) did not actually work on lark-cli 1.0.43+: those env vars enter "external credentials" mode but never mint a usable bot token, so every bot silently fell back to whichever profile `lark-cli auth login` had touched last. Replaced with: at worker startup `ensureLarkProfile(bot)` registers a `lark-cli profile` per bot (`profile add --app-secret-stdin`), `provisionLarkShim(bot)` writes a PATH shim at `~/.lark-multi-cli-bridge/shims/<bot>/lark-cli` that `exec`s the real binary with `--profile <app_id>` pinned, and the dispatcher prepends that shim dir to every LLM child's `PATH`. Multi-bot deployments now route every `lark-cli` call to the right identity transparently. See `docs/architecture.md` → "How lmcb isolates bot identity for lark-cli children".
+- **`lark-cli profile list` no longer fails with `unknown flag: --format`** on lark-cli 1.0.43/1.0.45 — `profile list` emits JSON by default, the flag never existed.
+
+### Changed
+
+- **Tool-call rendering switched from per-tool collapsible panels to a single blockquote list.** Each tool now renders as `> ✅ **Tool** — summary`, with consecutive tools sharing one blockquote element. Errors stay inline (`> ↳ <first-line of output>`, capped at 150 chars) — no more red-bordered panel. The last tool while the run is still in flight keeps a live `_运行中…_` panel so long tasks remain observable. Full tool detail (input + output, stack traces) is in the worker log. See `docs/architecture.md` → "Tool-call rendering".
+
+### Internal
+
+- New `src/lark/lark-cli-provision.ts` (idempotent profile registration, shim writer, hardened `resolveRealLarkCli` with shim-recursion guard via `path.resolve` normalization, internal `which` helper).
+- `paths.shimsDir(botName)` and `paths.shimsRoot` honor `LMCB_HOME` so sandboxed runs and tests stay isolated.
+- Shim is single-quoted (`exec '<path>' --profile '<app_id>' "$@"`) to prevent injection via apostrophe / newline in `app_id` or installed binary path.
+- `Dispatcher.extraEnv` JSDoc and `tests/worker/dispatcher-extra-env.test.ts` header updated to reference the PATH shim model (was: `LARKSUITE_CLI_*` env keys).
+
 ## [v0.7.0] - 2026-06-01
 
 ### Added
