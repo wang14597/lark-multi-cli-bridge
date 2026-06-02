@@ -61,23 +61,42 @@ describe('renderRunCard', () => {
     expect(elements.some((e) => e['tag'] === 'collapsible_panel')).toBe(false);
   });
 
-  it('error tool keeps its own red panel even mixed with done list lines', () => {
+  it('error tool renders inline inside the blockquote with a ↳ summary, no red panel', () => {
     const s = createRunState();
     addTool(s, { id: 't1', name: 'Read', input: { file_path: 'a.ts' } });
     finishTool(s, 't1', 'done');
     addTool(s, { id: 't2', name: 'Bash', input: { command: 'pnpm test' } });
-    finishTool(s, 't2', 'error', 'AssertionError');
+    finishTool(s, 't2', 'error', 'AssertionError: expected foo to equal bar\n  at line 42');
     addTool(s, { id: 't3', name: 'Write', input: { file_path: 'b.ts' } });
     finishTool(s, 't3', 'done');
     finalize(s, { kind: 'done' });
     const card = renderRunCard(s) as Record<string, unknown>;
     const body = card['body'] as Record<string, unknown>;
     const elements = body['elements'] as Array<Record<string, unknown>>;
-    const panels = elements.filter((e) => e['tag'] === 'collapsible_panel');
-    expect(panels).toHaveLength(1);
-    const panelStr = JSON.stringify(panels[0]);
-    expect(panelStr).toContain('AssertionError');
-    expect(panelStr).toContain('"red"');
+    // No collapsible_panel for the error tool — same visual weight as done.
+    expect(elements.some((e) => e['tag'] === 'collapsible_panel')).toBe(false);
+    // All tools (done + error) live in the same blockquote markdown element.
+    expect(elements.filter((e) => e['tag'] === 'markdown')).toHaveLength(1);
+    const content = (elements[0]!['content'] as string);
+    expect(content).toContain('> ✅ **Read**');
+    expect(content).toContain('> ❌ **Bash** — pnpm test');
+    expect(content).toContain('> ↳ AssertionError: expected foo to equal bar');
+    expect(content).toContain('> ✅ **Write**');
+    // Only first non-empty line is surfaced; stack frame stays out of the card.
+    expect(content).not.toContain('at line 42');
+  });
+
+  it('error tool with no output still renders the header line', () => {
+    const s = createRunState();
+    addTool(s, { id: 't1', name: 'Bash', input: { command: 'false' } });
+    finishTool(s, 't1', 'error');
+    finalize(s, { kind: 'done' });
+    const card = renderRunCard(s) as Record<string, unknown>;
+    const body = card['body'] as Record<string, unknown>;
+    const elements = body['elements'] as Array<Record<string, unknown>>;
+    const content = elements.find((e) => e['tag'] === 'markdown')!['content'] as string;
+    expect(content).toContain('> ❌ **Bash**');
+    expect(content).not.toContain('↳');
   });
 
   it('last running tool keeps a live panel while siblings before it are list lines', () => {

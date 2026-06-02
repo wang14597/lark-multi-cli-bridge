@@ -73,16 +73,18 @@ function* groupBlocks(blocks: Block[]): Generator<Group> {
   if (toolBuf.length > 0) yield { kind: 'tools', tools: toolBuf };
 }
 
+const ERROR_SUMMARY_MAX = 150;
+
 /**
  * Render a group of consecutive tool calls.
  *
- * Default posture is a single markdown list (one line per tool) so the card
- * stays visually light. Two exceptions promote a tool back into its own
- * collapsible panel so the user can see actionable context without leaving
- * Lark:
- *   - `status === 'error'` → red-bordered panel, body expanded
- *   - the last tool while the run is still in flight → grey panel with live
- *     "running…" body
+ * Default posture is a single markdown blockquote (one line per tool) so the
+ * card stays visually light:
+ *   - done / error tools → blockquote line `> <icon> **Tool** — summary`
+ *   - errors add a follow-up `> ↳ <first-line of output>` so the failure
+ *     mode is visible in the card itself (full stack stays in worker log)
+ *   - the last tool while the run is still in flight → grey panel with the
+ *     live "running…" body, so long tasks remain observable
  *
  * Lines and panels can interleave within a single group; lineBuf is flushed
  * as a single markdown element each time a panel-worthy tool is encountered
@@ -101,15 +103,28 @@ function renderToolGroup(tools: ToolEntry[], finalized: boolean): object[] {
   const lastIndex = tools.length - 1;
   tools.forEach((tool, i) => {
     const isLastRunning = !finalized && i === lastIndex && tool.status === 'running';
-    if (tool.status === 'error' || isLastRunning) {
+    if (isLastRunning) {
       flushLines();
       out.push(toolPanel(tool, true));
-    } else {
-      lineBuf.push(`> ${toolHeaderText(tool)}`);
+      return;
+    }
+    lineBuf.push(`> ${toolHeaderText(tool)}`);
+    if (tool.status === 'error') {
+      const errLine = firstErrorLine(tool.output);
+      if (errLine) lineBuf.push(`> ↳ ${errLine}`);
     }
   });
   flushLines();
   return out;
+}
+
+function firstErrorLine(output: string | undefined): string {
+  if (!output) return '';
+  const firstNonEmpty = output.split('\n').find((l) => l.trim().length > 0) ?? '';
+  const oneLine = firstNonEmpty.trim();
+  return oneLine.length > ERROR_SUMMARY_MAX
+    ? `${oneLine.slice(0, ERROR_SUMMARY_MAX)}…`
+    : oneLine;
 }
 
 function reasoningPanel(content: string, active: boolean): object {
