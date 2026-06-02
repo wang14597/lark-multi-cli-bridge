@@ -14,6 +14,28 @@ export class SessionStore {
     return this.data.chats[chatId];
   }
 
+  /**
+   * Like {@link get} but returns the session ONLY if it was last written by
+   * the given bot. Use this anywhere the result will be fed back to an LLM
+   * (sessionId, cwd that affects continuation).
+   *
+   * SessionStore is keyed by chat_id alone, but the same chat can be served
+   * by multiple bots over time — different backends use disjoint sessionId
+   * namespaces (claude's UUID is not a valid codex thread_id and vice
+   * versa), and even within one backend two bots may have different lark
+   * identities / cwds / system prompts. Passing the prior owner's session
+   * to a different bot leads to "no rollout found" (codex), keychain
+   * mismatches, or worse — silently inheriting the wrong conversation.
+   *
+   * If the entry exists but belongs to another bot, the caller should treat
+   * the chat as having no session and let the LLM mint a fresh one;
+   * onSessionUpdate will then overwrite the stale entry.
+   */
+  getForBot(chatId: string, botName: string): ChatSession | undefined {
+    const existing = this.data.chats[chatId];
+    return existing && existing.bot === botName ? existing : undefined;
+  }
+
   list(): Array<{ chatId: string; session: ChatSession }> {
     return Object.entries(this.data.chats).map(([chatId, session]) => ({ chatId, session }));
   }

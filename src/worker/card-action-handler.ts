@@ -12,16 +12,17 @@ export interface CardActionHandlerDeps {
   dispatcher: Pick<Dispatcher, 'enqueue' | 'abort'>;
   log: Logger;
   lastIngressByChat: Map<string, IngressMessage>;
-  sessions: Pick<SessionStore, 'get'>;
+  sessions: Pick<SessionStore, 'get' | 'getForBot'>;
   botDefaultCwd: string;
   botBackendType: string;
+  botName: string;
   idleTimeoutMs: number;
   appOwnerOpenId?: string;
 }
 
 export function makeCardActionHandler(deps: CardActionHandlerDeps): (act: CardActionEvent) => Promise<void> {
   return async (act) => {
-    const { access, dispatcher, log, sessions, botDefaultCwd, idleTimeoutMs, appOwnerOpenId } = deps;
+    const { access, dispatcher, log, sessions, botDefaultCwd, botName, idleTimeoutMs, appOwnerOpenId } = deps;
 
     log.info({ chatId: act.chatId, cmd: act.cmd, operator: act.operatorOpenId }, 'card action');
 
@@ -44,8 +45,13 @@ export function makeCardActionHandler(deps: CardActionHandlerDeps): (act: CardAc
       }
       const synthPrompt = `[card-click] ${JSON.stringify(stripped)}`;
 
-      const existing = sessions.get(act.chatId);
-      const cwd = existing?.cwd ?? botDefaultCwd;
+      // Gate sessionId on bot identity (see SessionStore.getForBot). A
+      // button rendered by THIS bot can only continue this bot's session.
+      // cwd falls back to any prior chat entry — that's a chat-level /cd
+      // preference, harmless to inherit cross-bot.
+      const sessionEntry = sessions.getForBot(act.chatId, botName);
+      const cwd =
+        sessionEntry?.cwd ?? sessions.get(act.chatId)?.cwd ?? botDefaultCwd;
 
       log.info({ chatId: act.chatId, synthPrompt }, 'card-action: __claude_cb -> enqueue');
       try {
@@ -53,7 +59,7 @@ export function makeCardActionHandler(deps: CardActionHandlerDeps): (act: CardAc
           chatId: act.chatId,
           prompt: synthPrompt,
           cwd,
-          ...(existing?.sessionId !== undefined ? { sessionId: existing.sessionId } : {}),
+          ...(sessionEntry?.sessionId !== undefined ? { sessionId: sessionEntry.sessionId } : {}),
           idleTimeoutMs,
         });
       } catch (err) {

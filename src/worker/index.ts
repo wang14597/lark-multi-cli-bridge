@@ -195,6 +195,7 @@ export async function runWorker(botName: string): Promise<void> {
     sessions,
     botDefaultCwd: resolveCwd(bot.behavior.default_cwd),
     botBackendType: bot.backend.type,
+    botName: bot.name,
     idleTimeoutMs: bot.behavior.idle_timeout_seconds * 1000,
     ...(appOwnerOpenId ? { appOwnerOpenId } : {}),
   }));
@@ -271,8 +272,16 @@ export async function runWorker(botName: string): Promise<void> {
     }
     const promptText = downloaded.length ? `${msg.text}\n\n${downloaded.join('\n')}` : msg.text;
 
-    const existing = sessions.get(msg.chatId);
-    const cwd = existing?.cwd ?? resolveCwd(bot.behavior.default_cwd);
+    // Read session ONLY if it belongs to this bot. A chat served by
+    // multiple bots over time would otherwise hand a stale sibling's
+    // sessionId to the current backend — claude's UUID isn't a valid
+    // codex thread_id (and vice versa), causing "no rollout found" or
+    // worse, silently inheriting another bot's conversation. cwd is
+    // taken from any prior entry (chat-level /cd preference), but the
+    // sessionId hand-off is gated by bot identity.
+    const sessionEntry = sessions.getForBot(msg.chatId, bot.name);
+    const cwd =
+      sessionEntry?.cwd ?? sessions.get(msg.chatId)?.cwd ?? resolveCwd(bot.behavior.default_cwd);
 
     log.info({ chatId: msg.chatId, sender: msg.senderOpenId }, 'dispatching message');
     try {
@@ -280,7 +289,7 @@ export async function runWorker(botName: string): Promise<void> {
         chatId: msg.chatId,
         prompt: promptText,
         cwd,
-        ...(existing?.sessionId !== undefined ? { sessionId: existing.sessionId } : {}),
+        ...(sessionEntry?.sessionId !== undefined ? { sessionId: sessionEntry.sessionId } : {}),
         idleTimeoutMs: bot.behavior.idle_timeout_seconds * 1000,
         // Quote-reply the user's actual message. Card-action handler
         // (synthesized [card-click] events) intentionally does NOT set

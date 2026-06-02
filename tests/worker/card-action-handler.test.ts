@@ -36,8 +36,9 @@ describe('makeCardActionHandler — __claude_cb branch', () => {
       lastIngressByChat,
       botDefaultCwd: '/tmp',
       botBackendType: 'claude',
+      botName: 'claude-bot',
       idleTimeoutMs: 600_000,
-      sessions: { get: () => undefined } as any,
+      sessions: { get: () => undefined, getForBot: () => undefined } as any,
     });
 
     const evt: CardActionEvent = {
@@ -65,8 +66,9 @@ describe('makeCardActionHandler — __claude_cb branch', () => {
       lastIngressByChat: new Map(),
       botDefaultCwd: '/tmp',
       botBackendType: 'claude',
+      botName: 'claude-bot',
       idleTimeoutMs: 600_000,
-      sessions: { get: () => undefined } as any,
+      sessions: { get: () => undefined, getForBot: () => undefined } as any,
     });
 
     await handler({
@@ -92,8 +94,9 @@ describe('makeCardActionHandler — __claude_cb branch', () => {
       lastIngressByChat: new Map(),
       botDefaultCwd: '/tmp',
       botBackendType: 'claude',
+      botName: 'claude-bot',
       idleTimeoutMs: 600_000,
-      sessions: { get: () => undefined } as any,
+      sessions: { get: () => undefined, getForBot: () => undefined } as any,
     });
 
     await handler({
@@ -119,8 +122,9 @@ describe('makeCardActionHandler — __claude_cb branch', () => {
       lastIngressByChat: new Map(),
       botDefaultCwd: '/tmp',
       botBackendType: 'claude',
+      botName: 'claude-bot',
       idleTimeoutMs: 600_000,
-      sessions: { get: () => undefined } as any,
+      sessions: { get: () => undefined, getForBot: () => undefined } as any,
     });
 
     await handler({
@@ -146,8 +150,9 @@ describe('makeCardActionHandler — __claude_cb branch', () => {
       lastIngressByChat: new Map(),
       botDefaultCwd: '/tmp',
       botBackendType: 'claude',
+      botName: 'claude-bot',
       idleTimeoutMs: 600_000,
-      sessions: { get: () => undefined } as any,
+      sessions: { get: () => undefined, getForBot: () => undefined } as any,
     });
 
     await handler({
