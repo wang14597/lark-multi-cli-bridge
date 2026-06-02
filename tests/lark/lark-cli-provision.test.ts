@@ -182,6 +182,26 @@ describe('resolveRealLarkCli', () => {
       resolveRealLarkCli('/usr/local/bin/lark-cli', '/Users/me/.lark-multi-cli-bridge/shims'),
     ).toBe('/usr/local/bin/lark-cli');
   });
+
+  it('rejects when candidate equals shimsRoot exactly', () => {
+    expect(() =>
+      resolveRealLarkCli(
+        '/Users/me/.lark-multi-cli-bridge/shims',
+        '/Users/me/.lark-multi-cli-bridge/shims',
+      ),
+    ).toThrow(/refusing to use shim/);
+  });
+
+  it('rejects shim path even when expressed with .. traversal', () => {
+    // /Users/me/.lark-multi-cli-bridge/shims/../shims/codex-bot/lark-cli
+    // normalizes back into the shims dir
+    expect(() =>
+      resolveRealLarkCli(
+        '/Users/me/.lark-multi-cli-bridge/shims/../shims/codex-bot/lark-cli',
+        '/Users/me/.lark-multi-cli-bridge/shims',
+      ),
+    ).toThrow(/refusing to use shim/);
+  });
 });
 
 describe('which', () => {

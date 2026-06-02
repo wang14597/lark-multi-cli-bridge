@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-import { join, delimiter } from 'node:path';
+import { join, delimiter, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { access, constants } from 'node:fs/promises';
 
@@ -89,16 +89,25 @@ export async function provisionLarkShim(
 }
 
 export function resolveRealLarkCli(candidatePath: string, shimsRoot: string): string {
-  if (candidatePath.startsWith(shimsRoot + '/') || candidatePath === shimsRoot) {
+  const normalizedCandidate = resolve(candidatePath);
+  const normalizedRoot = resolve(shimsRoot);
+  if (
+    normalizedCandidate === normalizedRoot ||
+    normalizedCandidate.startsWith(normalizedRoot + '/')
+  ) {
     throw new Error(`refusing to use shim as real lark-cli: ${candidatePath}`);
   }
   return candidatePath;
 }
 
 /**
- * Build a runLarkCli that always invokes the real binary (NOT a shim). The
- * caller is responsible for resolving `realLarkCliPath` via resolveRealLarkCli
- * before passing it in.
+ * Build a runLarkCli that always invokes the real binary (NOT a shim).
+ *
+ * Threat model: shim safety is enforced by the absolute `realLarkCliPath`
+ * argument — callers MUST resolve their input via `resolveRealLarkCli` before
+ * passing it in. PATH is intentionally inherited from `process.env` so the
+ * real lark-cli's own subprocess discovery still works; this function does
+ * NOT scrub PATH, so do not rely on PATH manipulation for shim protection.
  */
 export function makeRunLarkCli(
   realLarkCliPath: string,
@@ -137,7 +146,7 @@ export async function which(name: string): Promise<string> {
   const path = process.env.PATH ?? '';
   for (const dir of path.split(delimiter)) {
     if (!dir) continue;
-    const candidate = `${dir}/${name}`;
+    const candidate = join(dir, name);
     try {
       await access(candidate, constants.X_OK);
       return candidate;
