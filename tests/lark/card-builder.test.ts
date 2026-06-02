@@ -54,9 +54,9 @@ describe('renderRunCard', () => {
     );
     expect(toolElements).toHaveLength(1);
     const content = toolElements[0]!['content'] as string;
-    expect(content).toContain('- ✅ **Read**');
-    expect(content).toContain('- ✅ **Write**');
-    expect(content).toContain('- ✅ **Bash**');
+    expect(content).toContain('> ✅ **Read**');
+    expect(content).toContain('> ✅ **Write**');
+    expect(content).toContain('> ✅ **Bash**');
     // No collapsible_panel for done tools
     expect(elements.some((e) => e['tag'] === 'collapsible_panel')).toBe(false);
   });
@@ -96,7 +96,7 @@ describe('renderRunCard', () => {
       (e) => e['tag'] === 'markdown' && (e['content'] as string)?.includes('**Read**'),
     );
     expect(listMd).toBeDefined();
-    expect(listMd!['content']).toContain('- ✅ **Read**');
+    expect(listMd!['content']).toContain('> ✅ **Read**');
   });
 
   it('streaming_mode is false in terminal state', () => {

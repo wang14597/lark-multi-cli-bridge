@@ -105,7 +105,7 @@ function renderToolGroup(tools: ToolEntry[], finalized: boolean): object[] {
       flushLines();
       out.push(toolPanel(tool, true));
     } else {
-      lineBuf.push(`- ${toolHeaderText(tool)}`);
+      lineBuf.push(`> ${toolHeaderText(tool)}`);
     }
   });
   flushLines();

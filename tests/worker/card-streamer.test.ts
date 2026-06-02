@@ -105,7 +105,7 @@ describe('CardStreamer (new RunState-driven)', () => {
     await streamer.onDone({ finalText: '', durationMs: 0 });
     await vi.runAllTimersAsync();
     const allJson = JSON.stringify(sink.sent);
-    expect(allJson).toContain('- ✅ **Skill** — superpowers:foo');
+    expect(allJson).toContain('> ✅ **Skill** — superpowers:foo');
     expect(allJson).not.toContain('无输出');
     vi.useRealTimers();
   });
