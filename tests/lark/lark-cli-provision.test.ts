@@ -47,4 +47,71 @@ describe('ensureLarkProfile', () => {
     expect(calls.length).toBe(1);
     expect(calls[0]!.args).toEqual(['profile', 'list', '--format', 'json']);
   });
+
+  it('runs profile add with --app-secret-stdin when app_id missing from list', async () => {
+    const { runLarkCli, calls } = makeRunner([
+      {
+        match: (args) => args[0] === 'profile' && args[1] === 'list',
+        result: {
+          stdout: JSON.stringify([
+            { name: 'other', appId: 'cli_aa93d72c97f9deea', brand: 'lark', active: true },
+          ]),
+          stderr: '',
+          exitCode: 0,
+        },
+      },
+      {
+        match: (args) => args[0] === 'profile' && args[1] === 'add',
+        result: { stdout: 'OK', stderr: '', exitCode: 0 },
+      },
+    ]);
+
+    await ensureLarkProfile(bot, {
+      runLarkCli,
+      writeFile: vi.fn(),
+      mkdirp: vi.fn(),
+    });
+
+    expect(calls.length).toBe(2);
+    expect(calls[1]!.args).toEqual([
+      'profile',
+      'add',
+      '--name',
+      'cli_aa96561a57b81ed1',
+      '--app-id',
+      'cli_aa96561a57b81ed1',
+      '--brand',
+      'lark',
+      '--app-secret-stdin',
+    ]);
+    expect(calls[1]!.stdin).toBe('sekrit');
+  });
+
+  it('throws when profile add fails', async () => {
+    const { runLarkCli } = makeRunner([
+      {
+        match: (args) => args[0] === 'profile' && args[1] === 'list',
+        result: { stdout: '[]', stderr: '', exitCode: 0 },
+      },
+      {
+        match: (args) => args[0] === 'profile' && args[1] === 'add',
+        result: { stdout: '', stderr: 'boom', exitCode: 1 },
+      },
+    ]);
+    await expect(
+      ensureLarkProfile(bot, { runLarkCli, writeFile: vi.fn(), mkdirp: vi.fn() }),
+    ).rejects.toThrow(/profile add failed.*boom/);
+  });
+
+  it('throws when profile list returns non-zero', async () => {
+    const { runLarkCli } = makeRunner([
+      {
+        match: (args) => args[0] === 'profile' && args[1] === 'list',
+        result: { stdout: '', stderr: 'nope', exitCode: 2 },
+      },
+    ]);
+    await expect(
+      ensureLarkProfile(bot, { runLarkCli, writeFile: vi.fn(), mkdirp: vi.fn() }),
+    ).rejects.toThrow(/profile list failed.*nope/);
+  });
 });
