@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: MIT
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { paths } from '../config/paths.js';
 import { loadAllBots } from '../config/load.js';
+import {
+  ensureLarkProfile,
+  provisionLarkShim,
+  resolveRealLarkCli,
+  makeRunLarkCli,
+  which,
+} from '../lark/lark-cli-provision.js';
 import { SessionStore } from '../session/store.js';
 import { createLogger } from '../telemetry/logger.js';
 import { buildAdapter } from '../adapters/registry.js';
@@ -62,15 +70,42 @@ export async function runWorker(botName: string): Promise<void> {
   }
   log.info({ version: preflight.version }, 'adapter ready');
 
-  // Bind every lark-cli child invocation to THIS bot's identity by injecting
-  // the LARKSUITE_CLI_* "external credentials" env vars into the LLM child's
-  // environment. lark-cli detects these and switches to its external-provider
-  // mode, bypassing config.json and the OS keychain entirely — so the worker
-  // never touches the global default profile and stays cross-platform.
+  // Every lark-cli call from inside the LLM subprocess must hit THIS bot's
+  // app identity. lark-cli 1.0.43 cannot accept credentials purely via env
+  // (LARKSUITE_CLI_APP_ID/SECRET enter "external credentials" mode but never
+  // mint a usable bot token); the only working path is a registered profile
+  // + the --profile flag. We provision a profile per bot and expose it via a
+  // PATH shim that hard-pins --profile on every invocation.
+  const shimDir = paths.shimsDir(bot.name);
+  const realLarkCliPath = resolveRealLarkCli(
+    process.env.LMCB_LARK_CLI_PATH ?? (await which('lark-cli')),
+    paths.shimsRoot,
+  );
+  const runLarkCli = makeRunLarkCli(realLarkCliPath);
+  // Narrow the loaded Bot's optional app_secret to the required-string shape
+  // expected by ensureLarkProfile/provisionLarkShim. The `if (!bot.lark.app_secret)`
+  // guard above already proves this is a string at runtime.
+  const provisioningBot = {
+    name: bot.name,
+    lark: {
+      app_id: bot.lark.app_id,
+      app_secret: bot.lark.app_secret,
+      tenant: bot.lark.tenant,
+    },
+  };
+  await ensureLarkProfile(provisioningBot, {
+    runLarkCli,
+    writeFile: (p, c, m) => writeFile(p, c, { mode: m }),
+    mkdirp: (p) => mkdir(p, { recursive: true }).then(() => undefined),
+  });
+  await provisionLarkShim(provisioningBot, shimDir, realLarkCliPath, {
+    writeFile: (p, c, m) => writeFile(p, c, { mode: m }),
+    mkdirp: (p) => mkdir(p, { recursive: true }).then(() => undefined),
+  });
+  log.info({ shimDir, realLarkCliPath }, 'lark-cli profile + shim provisioned');
+
   const larkCliEnv: Record<string, string> = {
-    LARKSUITE_CLI_APP_ID: bot.lark.app_id,
-    LARKSUITE_CLI_APP_SECRET: bot.lark.app_secret,
-    LARKSUITE_CLI_BRAND: bot.lark.tenant,
+    PATH: `${shimDir}:${process.env.PATH ?? ''}`,
   };
 
   const client = createLarkClient({
