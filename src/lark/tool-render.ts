@@ -73,6 +73,10 @@ function summarizeInput(name: string, input: unknown): string {
     case 'Agent':
     case 'Task':
       return pick('description') || pick('subagent_type');
+    case 'Skill':
+      return pick('skill');
+    case 'AskUserQuestion':
+      return pick('question');
     default:
       return pick('command') || pick('file_path') || pick('path') || pick('query');
   }
@@ -106,6 +110,17 @@ function renderInput(tool: ToolEntry): string {
       return str('url') ? `**URL** ${str('url')}` : '';
     case 'WebSearch':
       return str('query') ? `**Query** \`${truncate(str('query'), BODY_FIELD_MAX)}\`` : '';
+    case 'Skill':
+      return str('skill') ? `**Skill** \`${str('skill')}\`` : '';
+    case 'Agent':
+    case 'Task': {
+      const lines: string[] = [];
+      if (str('subagent_type')) lines.push(`**Agent** \`${str('subagent_type')}\``);
+      if (str('description')) lines.push(`**Task** ${truncate(str('description'), BODY_FIELD_MAX)}`);
+      return lines.join('\n');
+    }
+    case 'AskUserQuestion':
+      return str('question') ? `**Question** ${truncate(str('question'), BODY_FIELD_MAX)}` : '';
     default:
       return '';
   }

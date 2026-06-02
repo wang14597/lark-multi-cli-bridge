@@ -51,4 +51,21 @@ describe('Dispatcher (MVP — no preempt)', () => {
     expect(streamer.onDone).toHaveBeenCalledTimes(1);
     expect(onSession).toHaveBeenCalledWith('oc_1', 'sess_1');
   });
+
+  it('relays tool-result event summary to streamer.onToolResult as output', async () => {
+    // Regression for the Skill 无输出 bug — the adapter now puts the real
+    // tool output into AdapterEvent.summary; the dispatcher must forward it
+    // so the card can render it instead of falling back to "无输出".
+    const adapter = new MockAdapter([
+      { type: 'session-start', sessionId: 'sess_t' },
+      { type: 'tool-call', name: 'Skill', input: { skill: 'foo' }, callId: 'tu_s' },
+      { type: 'tool-result', name: '', callId: 'tu_s', ok: true, summary: 'Launching skill: foo' },
+      { type: 'done', sessionId: 'sess_t', finalText: '' },
+    ]);
+    const streamer = fakeStreamer();
+    const d = new Dispatcher({ adapter, makeStreamer: () => streamer, onSessionUpdate: () => {} });
+    await d.enqueue({ chatId: 'oc_skill', prompt: 'go', cwd: '/tmp', idleTimeoutMs: 60_000 });
+    await new Promise((r) => setTimeout(r, 600));
+    expect(streamer.onToolResult).toHaveBeenCalledWith('tu_s', true, 'Launching skill: foo');
+  });
 });

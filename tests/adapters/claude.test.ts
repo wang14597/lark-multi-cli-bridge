@@ -39,4 +39,104 @@ describe('ClaudeAdapter.parseClaudeLine', () => {
     const toolResult = events.find((e) => e.type === 'tool-result');
     expect(toolResult).toMatchObject({ type: 'tool-result', callId: 'tu_1', ok: true });
   });
+
+  // -----------------------------------------------------------------------
+  // tool_result content passthrough — the "Skill 无输出" root cause
+  // -----------------------------------------------------------------------
+
+  function parseOne(line: string): AdapterEvent[] {
+    const out: AdapterEvent[] = [];
+    for (const ev of parseClaudeLine(line)) out.push(ev);
+    return out;
+  }
+
+  it('surfaces tool_result.content (array-of-text form) as summary on the tool-result event', () => {
+    const events = eventsFromFixture('with-tool-use.jsonl');
+    const toolResult = events.find((e) => e.type === 'tool-result');
+    expect(toolResult).toMatchObject({
+      type: 'tool-result',
+      callId: 'tu_1',
+      ok: true,
+      summary: 'file contents',
+    });
+  });
+
+  it('surfaces tool_result.content (string form) directly as summary', () => {
+    const line = JSON.stringify({
+      type: 'user',
+      message: {
+        content: [
+          { type: 'tool_result', tool_use_id: 'tu_x', is_error: false, content: 'Launching skill: superpowers:foo' },
+        ],
+      },
+    });
+    const events = parseOne(line);
+    expect(events[0]).toMatchObject({
+      type: 'tool-result',
+      callId: 'tu_x',
+      ok: true,
+      summary: 'Launching skill: superpowers:foo',
+    });
+  });
+
+  it('joins multi-block array tool_result.content with newlines', () => {
+    const line = JSON.stringify({
+      type: 'user',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'tu_multi',
+            is_error: false,
+            content: [
+              { type: 'text', text: 'line one' },
+              { type: 'text', text: 'line two' },
+            ],
+          },
+        ],
+      },
+    });
+    const events = parseOne(line);
+    expect((events[0] as Extract<AdapterEvent, { type: 'tool-result' }>).summary).toBe('line one\nline two');
+  });
+
+  it('omits summary when tool_result.content is missing or empty', () => {
+    const lineMissing = JSON.stringify({
+      type: 'user',
+      message: {
+        content: [{ type: 'tool_result', tool_use_id: 'tu_a', is_error: false }],
+      },
+    });
+    const lineEmpty = JSON.stringify({
+      type: 'user',
+      message: {
+        content: [{ type: 'tool_result', tool_use_id: 'tu_b', is_error: false, content: [] }],
+      },
+    });
+    const missing = parseOne(lineMissing)[0] as Extract<AdapterEvent, { type: 'tool-result' }>;
+    const empty = parseOne(lineEmpty)[0] as Extract<AdapterEvent, { type: 'tool-result' }>;
+    expect(missing.summary).toBeUndefined();
+    expect(empty.summary).toBeUndefined();
+  });
+
+  it('ignores non-text content blocks (e.g. image) when flattening tool_result.content', () => {
+    const line = JSON.stringify({
+      type: 'user',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'tu_mixed',
+            is_error: false,
+            content: [
+              { type: 'text', text: 'visible text' },
+              { type: 'image', source: { type: 'base64', data: '...' } },
+            ],
+          },
+        ],
+      },
+    });
+    const events = parseOne(line);
+    expect((events[0] as Extract<AdapterEvent, { type: 'tool-result' }>).summary).toBe('visible text');
+  });
 });

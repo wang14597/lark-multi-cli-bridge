@@ -132,7 +132,7 @@ export class Dispatcher {
             streamer.onToolCall(ev.callId, ev.name, ev.input);
             break;
           case 'tool-result':
-            streamer.onToolResult(ev.callId, ev.ok);
+            streamer.onToolResult(ev.callId, ev.ok, ev.summary);
             break;
           case 'error':
             if (signal.aborted && signal.reason instanceof UserStopError) {

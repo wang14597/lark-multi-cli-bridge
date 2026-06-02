@@ -91,6 +91,24 @@ describe('CardStreamer (new RunState-driven)', () => {
     vi.useRealTimers();
   });
 
+  it('tool result output is rendered in the card body (not "无输出")', async () => {
+    // Regression for the Skill 无输出 bug: when the adapter passes a real
+    // output string to onToolResult, the finalized card must render it
+    // instead of falling back to the placeholder.
+    vi.useFakeTimers();
+    const sink = fakeSink();
+    const streamer = new CardStreamer({ sink, throttleMs: 500, throttleChars: 50 });
+    await streamer.start();
+    streamer.onToolCall('cS', 'Skill', { skill: 'superpowers:foo' });
+    streamer.onToolResult('cS', true, 'Launching skill: superpowers:foo');
+    await streamer.onDone({ finalText: '', durationMs: 0 });
+    await vi.runAllTimersAsync();
+    const allJson = JSON.stringify(sink.sent);
+    expect(allJson).toContain('Launching skill: superpowers:foo');
+    expect(allJson).not.toContain('无输出');
+    vi.useRealTimers();
+  });
+
   it('card while running has streaming_mode true', async () => {
     vi.useFakeTimers();
     const sink = fakeSink();

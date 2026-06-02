@@ -20,6 +20,42 @@ interface ClaudeStreamLine {
   usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number };
 }
 
+/**
+ * Flatten the `tool_result.content` field into a single string so the
+ * downstream card renderer has something to show.
+ *
+ * The Claude CLI wire format accepts two shapes (see Anthropic Messages API):
+ *   - plain string: `"file contents"`
+ *   - block array:  `[{type:'text',text:'...'},{type:'image',source:...}]`
+ *
+ * We only keep `{type:'text'}` blocks — images and other non-text blocks have
+ * no useful textual representation in a Lark card panel and would just add
+ * noise. Multiple text blocks are joined with newlines.
+ *
+ * Returns `undefined` when there's nothing to render, so the caller can omit
+ * the `summary` field entirely under `exactOptionalPropertyTypes`.
+ */
+function flattenToolResultContent(content: unknown): string | undefined {
+  if (typeof content === 'string') {
+    return content.length > 0 ? content : undefined;
+  }
+  if (Array.isArray(content)) {
+    const parts: string[] = [];
+    for (const block of content) {
+      if (
+        block !== null &&
+        typeof block === 'object' &&
+        (block as { type?: unknown }).type === 'text' &&
+        typeof (block as { text?: unknown }).text === 'string'
+      ) {
+        parts.push((block as { text: string }).text);
+      }
+    }
+    return parts.length > 0 ? parts.join('\n') : undefined;
+  }
+  return undefined;
+}
+
 export function* parseClaudeLine(line: string): Iterable<AdapterEvent> {
   let obj: ClaudeStreamLine;
   try {
@@ -49,11 +85,13 @@ export function* parseClaudeLine(line: string): Iterable<AdapterEvent> {
   if (obj.type === 'user' && obj.message?.content) {
     for (const block of obj.message.content) {
       if (block.type === 'tool_result') {
+        const summary = flattenToolResultContent(block.content);
         yield {
           type: 'tool-result',
           callId: block.tool_use_id,
           name: '',
           ok: !block.is_error,
+          ...(summary !== undefined ? { summary } : {}),
         };
       }
     }
