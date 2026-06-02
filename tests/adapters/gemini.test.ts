@@ -73,4 +73,43 @@ describe('GeminiAdapter appendSystemPrompt', () => {
     expect(promptIdx).toBeGreaterThanOrEqual(0);
     expect(args[promptIdx + 1]).toBe('USER-PROMPT');
   });
+
+  // gemini CLI 0.42+ rejects `--prompt-interactive=false` (yargs treats it
+  // as "set -i to 'false'", which then collides with -p). The adapter must
+  // pass only -p / --prompt.
+  it('never emits --prompt-interactive (gemini 0.42 yargs collision)', async () => {
+    const adapter = new GeminiAdapter({ cliPath: ECHO_ARGS_SH });
+    const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
+    expect(args.some((a) => a.startsWith('--prompt-interactive'))).toBe(false);
+    expect(args.some((a) => a === '-i')).toBe(false);
+  });
+
+  // gemini 0.42 dropped --chat-id; passing it would unknown-flag. Until we
+  // wire a real --resume/--session-id adapter, ctx.sessionId must NOT leak
+  // into the argv.
+  it('does not forward ctx.sessionId to the gemini argv (no --chat-id)', async () => {
+    const adapter = new GeminiAdapter({ cliPath: ECHO_ARGS_SH });
+    const tmp = mkdtempSync(join(tmpdir(), 'gemini-test-'));
+    const outFile = join(tmp, 'args.txt');
+    try {
+      const ctx: RunContext = {
+        prompt: 'USER-PROMPT',
+        cwd: tmp,
+        signal: new AbortController().signal,
+        idleTimeoutMs: 5000,
+        env: { ECHO_ARGS_OUT: outFile },
+        sessionId: 'should-not-appear-in-argv',
+      };
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _ of adapter.run(ctx)) {
+        /* drain */
+      }
+      const args = readFileSync(outFile, 'utf8').split('\0').slice(0, -1);
+      expect(args).not.toContain('--chat-id');
+      expect(args).not.toContain('--session-id');
+      expect(args.some((a) => a.includes('should-not-appear-in-argv'))).toBe(false);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });

@@ -48,9 +48,19 @@ export class GeminiAdapter implements Adapter {
     const finalPrompt = this.opts.appendSystemPrompt
       ? `${this.opts.appendSystemPrompt}\n\n---\n\n${ctx.prompt}`
       : ctx.prompt;
-    const args = ['--prompt-interactive=false', '--prompt', finalPrompt];
+    // gemini CLI 0.42+ uses yargs and treats `--prompt-interactive=false` as
+    // "the -i flag was set (with value 'false')", which then collides with -p:
+    //   "Cannot use both --prompt (-p) and --prompt-interactive (-i) together"
+    // -p alone is sufficient to select non-interactive headless mode; the
+    // interactive switch must simply not be present.
+    const args = ['--prompt', finalPrompt];
     if (this.opts.model) args.push('--model', this.opts.model);
-    if (ctx.sessionId) args.push('--chat-id', ctx.sessionId);
+    // Session continuation is intentionally omitted: gemini 0.42 dropped
+    // --chat-id in favour of --resume <index|"latest"> / --session-id
+    // (which "Start[s] a new session" rather than resuming a prior one).
+    // Mapping our UUID-based SessionStore IDs onto gemini's index-based
+    // resume is a separate fix; for now every gemini turn runs fresh
+    // and the synthSessionId below only keeps SessionStore happy.
     args.push(...(this.opts.extraArgs ?? []));
 
     let finalText = '';
