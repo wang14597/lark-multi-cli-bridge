@@ -1,43 +1,67 @@
 # lark-multi-cli-bridge (lmcb)
 
-飞书/Lark 聊天桥接，把用户消息路由到 **Claude Code**、**OpenAI Codex CLI** 或 **Google Gemini CLI**，支持在同一台机器上并发运行多个机器人——每个机器人对应一种 CLI 后端。
+**把你本机的 Claude Code / OpenAI Codex / Google Gemini CLI 接到飞书。** 一个轻量 bot：一条命令启动，扫码注册一个 Lark PersonalAgent 应用，然后在飞书里 DM 你的 bot——发截图、传文件、跑脚本、改代码，每一步都在你这台电脑上执行。
 
 English: [README.md](README.md)
 
-## 为什么
+## 用起来是什么感觉
 
-在同一个 Lark 工作区里同时跑 Claude、Codex、Gemini 三个 bot，共用一个 supervisor。每个 bot 各有自己的 Lark 身份、对话状态、崩溃预算和 session 续接——但共用同一套流式卡片 UI、同一套斜杠命令、同一套访问控制和同一份磁盘布局。运维三个 bot 几乎不比运维一个多花精力。
+你本机已经装好了 `claude` / `codex` / `gemini`。lmcb 把它们包成飞书 bot，让你在手机上随时调度。几个具体场景：
 
-## 功能
+- **堵车里，线上爆了。** 截一张 Sentry 报错图 DM 给 `claude-bot`。claude 在你笔记本上读图、打开出问题的文件、写补丁、流式回到飞书卡片里。
+- **离开工位，想看跑测结果。** DM `codex-bot` "跑下 pnpm test 看哪些挂了"。codex 本地跑，挂掉的用例名一行一行流出来。
+- **群里跟同事一起 triage。** @ 一下 bot，它通过「引用回复」嵌进消息流，群里所有人看着同一个卡片协作。⏹ 按钮可以中途打断。
 
-- **多 bot、多后端** — 一个 supervisor fork 一个 worker per bot；每个 worker 以独立 bot 身份连接 Lark，并 spawn 各自的 CLI（`claude` / `codex` / `gemini`）。
-- **每 bot 独立的 `lark-cli` 身份** — worker 启动时为每个 bot 注册一个 `lark-cli` profile，并在 `~/.lark-multi-cli-bridge/shims/<bot>/` 写一个 PATH shim，强制所有 `lark-cli` 调用带上 `--profile <app_id>`。LLM 子进程可以放心调 `lark-cli api …`，永远绑定到正确 bot 身份，即使一台机器上跑多个 bot 也不会串号。
-- **扫码创建 app** — `lmcb init` 默认走二维码流程：用飞书/Lark 移动端扫码，Lark 自动在你的租户下创建内部应用并返回 `app_id`/`app_secret`，无需访问开发者后台。
-- **精美流式卡片** — `streaming_mode` 渐进更新；可折叠思考面板；工具调用统一渲染为一个 markdown blockquote（`> ✅ **Tool** — summary`），当前正在跑的工具单独保留 live 面板，失败用 `↳` 嵌入显示错误首行；底部状态栏；终态备注；⏹ 终止按钮。
-- **引用回复归属清晰** — 每轮第一张卡通过 `im.message.reply` 引用用户消息发出，原消息出现 `N 条回复` 角标，bot 卡片渲染在 `回复 <user>:` 引用块下方——群聊里再忙也能看清回的是哪条。
-- **(chatId, botName) 二维 session** — 同一个聊天若被多个 bot 服务，每个 bot 各自独立维护 `sessionId` / `cwd`。`claude-bot` 的 session UUID 永远不会被 `codex-bot` 看到，一个聊天里能并行跟多个 agent 各开各的对话互不串号。旧版单 slot 文件第一次 load 时自动迁移。
-- **抢占 + 500 ms 批处理** — 快速连发的消息合并为一次 CLI 调用，不会重复 spawn。引用回复 anchor 到 batch 里最新一条消息。
-- **跨消息续 session** — 通过 CLI 自身的 session id 保留多轮上下文：claude `--session`、codex `exec resume <thread_id>`、gemini `--resume <uuid>`（stream-json + 工具调用渲染与 claude/codex 同等体验）。
-- **11 条斜杠命令** — `/help`、`/new`、`/cd`、`/ws`、`/status`、`/stop`、`/timeout`、`/access`、`/sessions`、`/reconnect`、`/doctor`。
-- **每 bot 独立访问控制** — 按用户或聊天设白名单；app owner 默认是 admin。
-- **崩溃恢复** — 指数退避（1s → 30s）；3 分钟内崩溃 5 次则 worker 被禁用，`lmcb restart <bot>` 重新启用。
-- **macOS launchd 守护进程** — `lmcb daemon install` 开机自启。
-- **bots 目录热加载** — 编辑 `bots/*.yaml` 后 worker 自动重启（500 ms 防抖）。
-- **附件支持** — 图片和文件下载后以 `[Attached <kind>: <abs path>]` 追加到 prompt。
-- **SDK 错误完整可见** — Lark SDK 错误通过 pino 输出，使用 `util.inspect({depth: 10})` 序列化，嵌套的 API 错误结构（`field_violations`、`response.data`）完整落入 worker 日志，不再被截断为 `[Object]`。
-- 状态存储在 `~/.lark-multi-cli-bridge/`（配置、bot YAML、会话、日志、媒体文件、per-bot `lark-cli` shims）。
+CLI 自带的 session id 在消息之间保持不变——claude `--session`、codex `exec resume`、gemini `--resume`——所以多轮上下文自然续上。
 
-## 快速开始
+## 60 秒上手
 
 ```bash
+git clone https://github.com/wang14597/lark-multi-cli-bridge.git
+cd lark-multi-cli-bridge
 pnpm install && pnpm build
-node ./bin/lmcb.mjs init       # 交互式向导：选后端、扫码、完成
+
+node ./bin/lmcb.mjs init             # 交互向导：选后端、扫码、完成
 node ./bin/lmcb.mjs start --foreground
 ```
 
-`init` 向导引导你完成后端选择、bot 命名和应用创建（扫码或粘贴已有凭证）。完成后，在飞书给你的新 bot 发消息即可。
+`init` 引导你走完：
+1. **选后端** — `claude` / `codex` / `gemini`（你本机装了哪个就选哪个）。
+2. **手机飞书扫码**。Lark 自动在你的租户下创建一个 PersonalAgent 应用，把 `app_id` / `app_secret` 返回给 lmcb。**全程不用开浏览器，不用进开发者后台。**
+3. Bot 配置写到 `~/.lark-multi-cli-bridge/bots/<name>.yaml`（chmod 600）。完事就可以 DM bot 了。
 
 完整教程见：[docs/quickstart.zh.md](docs/quickstart.zh.md)
+
+## bot 能帮你做什么
+
+按用户实际用得到的顺序：
+
+- **读你发的图和文件**——截图、PDF、代码文件，全部下载到本地磁盘并以 `[Attached <kind>: <abs path>]` 形式注入到 prompt，CLI 直接用绝对路径 `Read` 即可。
+- **改本机文件**——CLI 跑在你的电脑上，文件系统权限照常。用 `/cd <path>` 定 cwd；用 `/ws` 保存和切换命名工作区。
+- **流式输出**——文字、工具调用（`> ✅ **Bash** — pnpm test`）、工具失败（同行内 `↳ AssertionError: …`）、思考面板，全部实时流入同一张飞书卡片。⏹ 按钮中途打断；`/stop` 命令等效。
+- **引用回复归属清晰**——每轮第一张卡引用用户消息发出，原消息出现 `N 条回复` 角标，卡片渲染在 `回复 <user>:` 块下方——群里再忙也能看清回的是哪条。
+- **跨消息记忆上下文**——CLI 自带的 session id 按 chat 持久化，后续问"刚才那个怎么处理"它知道指的是什么。
+- **聊天里的斜杠命令**——`/help`、`/new`、`/cd`、`/ws`、`/status`、`/stop`、`/timeout`、`/access`、`/sessions`、`/reconnect`、`/doctor`。
+- **群里也能用**——@-mention 触发；可以「引用回复」让 bot 针对某条历史消息处理；bridge 会把 `merge_forward` 转发块展开，bot 看到的就是真实上下文。
+
+## 一个 bot 不够时
+
+设计目标是**一个开发者在自己电脑上的 bots**，不追求 SaaS 体量。在这个范围内可以这样扩：
+
+- **不同后端并存**——`claude-bot` + `codex-bot` + `gemini-bot` 一个 supervisor 全管；各自独立的 Lark 身份、崩溃预算、对话状态。
+- **同 backend 多人格**——`claude-personal-bot` + `claude-team-bot` 走两个不同 Lark 应用，各自独立的访问名单和 cwd。
+- **同聊天多 bot 互不串号**——SessionStore 按 `(chatId, botName)` 二维存储，claude 的 UUID 和 codex 的 thread_id 永远不会交叉传给对方，一个群里可以并行跟多个 agent 对话。
+- **每 bot 独立的 `lark-cli` 身份**——worker 启动时为每个 bot 在 `~/.lark-multi-cli-bridge/shims/<bot>/` 写一个 PATH shim，强制 `lark-cli` 调用带上 `--profile <app_id>`。LLM 子进程随便调 `lark-cli api …`，永远绑到正确 bot 身份，机器上 bot 再多也不会串。
+
+## 运维要点
+
+- **崩溃恢复**——指数退避（1s → 30s）；3 分钟内崩溃 5 次则 worker 被禁用，`lmcb restart <bot>` 重新启用。
+- **macOS launchd 守护进程**——`lmcb daemon install` 开机自启。Linux 支持前台运行，systemd unit 生成延后。
+- **bots 目录热加载**——编辑 `bots/*.yaml` 后 worker 自动重启（500 ms 防抖）。
+- **抢占 + 500 ms 批处理**——快速连发的消息合并为一次 CLI 调用，不会重复 spawn；引用回复 anchor 到 batch 里最新一条。
+- **SDK 错误完整可见**——Lark SDK 错误通过 pino 输出，`util.inspect({depth: 10})` 序列化，嵌套的 API 错误（`field_violations`、`response.data`）完整落到 worker 日志，不再被截断为 `[Object]`。
+- **每 bot 独立访问控制**——按用户或聊天设白名单；app owner 默认是 admin。
+- **状态全在 `~/.lark-multi-cli-bridge/`**——配置、bot YAML、会话（按 (chatId, botName)）、日志、媒体文件、per-bot `lark-cli` shims。
 
 ## Agent Skills（推荐）
 

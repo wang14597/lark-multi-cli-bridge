@@ -1,43 +1,67 @@
 # lark-multi-cli-bridge (lmcb)
 
-A Lark/Feishu chat bridge that routes inbound messages to **Claude Code**, **OpenAI Codex CLI**, or **Google Gemini CLI**, with support for running multiple bots concurrently — one bot per CLI backend — on a single host.
+**Drive your local Claude Code / OpenAI Codex / Google Gemini CLI from Lark.** A lightweight bot: one command to start, scan a QR to mint a Lark PersonalAgent app, then DM the bot from Feishu to send screenshots, attach files, run scripts, edit code — every action runs on your own machine.
 
 中文版: [README.zh.md](README.zh.md)
 
-## Why
+## What it feels like
 
-Run a Claude, Codex, and Gemini bot from the same Lark workspace, side by side under one shared supervisor. Each bot keeps its own Lark identity, its own conversation state, its own crash budget, and its own session continuity — but they share the streaming-card UI, the slash-command surface, the access-control model, and the on-disk layout, so operating three bots is barely more work than operating one.
+You already have `claude` / `codex` / `gemini` installed on your laptop. lmcb wraps one of them in a Lark bot so you can reach it from your phone — anywhere. A few concrete moments:
 
-## Features
+- **Stuck in traffic, prod just broke.** Snap a screenshot of the Sentry stack and DM your `claude-bot`. claude reads the image on your laptop, opens the offending file, drafts a fix, streams the diff back into a Lark card.
+- **Away from the desk, want a build status.** DM `codex-bot` "跑下 pnpm test 看哪些挂了". codex runs it locally, the failing test names stream in line by line.
+- **In a group with teammates triaging a bug.** @-mention the bot; it answers as a quoted reply so the thread stays legible. ⏹ button on the card to abort mid-stream.
 
-- **Multi-bot, multi-backend** — one supervisor forks one worker per bot; each worker connects to Lark via its own bot identity and spawns its own CLI (`claude` / `codex` / `gemini`).
-- **Per-bot `lark-cli` identity** — at worker startup the bridge registers a `lark-cli` profile for each bot and writes a per-bot PATH shim that pins `--profile <app_id>` on every invocation. The LLM child can call `lark-cli api …` freely; calls always route to the correct bot's identity, even when several bots share one machine.
-- **Scan-to-create onboarding** — `lmcb init` defaults to scanning a QR code with the Lark mobile app; Lark auto-creates an internal-use application under your tenant and returns `app_id`/`app_secret`. No developer console visit required.
-- **Polished streaming cards** — `streaming_mode` progressive updates; collapsible reasoning panel; tool calls render as a single markdown blockquote (`> ✅ **Tool** — summary`), with the currently-running tool kept as a live panel and errors surfaced inline with a `↳` follow-up; footer status bar; terminal-state note; ⏹ stop button.
-- **Quote-reply attribution** — the first card per turn is sent via `im.message.reply` against the user's message, so the original gets a `N 条回复` badge and the bot's card renders under a `回复 <user>:` header — clear attribution even in busy group chats.
-- **Per-(chatId, botName) sessions** — two bots active in the same chat keep independent `sessionId` / `cwd`. `claude-bot`'s session UUID is never visible to `codex-bot` (or vice versa), so a single chat can hold parallel conversations with different agents without cross-bleed. Legacy single-slot session files migrate automatically on first load.
-- **Preempt + 500 ms batch** — rapid follow-ups merge into a single CLI run instead of spawning a redundant one. The reply quote pins to the latest message in the batch.
-- **Session continuity** — multi-turn context preserved via the CLI's own session id: claude `--session`, codex `exec resume <thread_id>`, gemini `--resume <uuid>` (stream-json + tool-call rendering on par with claude/codex).
-- **11 slash commands** — `/help`, `/new`, `/cd`, `/ws`, `/status`, `/stop`, `/timeout`, `/access`, `/sessions`, `/reconnect`, `/doctor`.
-- **Per-bot access control** — allowlist by user or chat; app owner is implicit admin.
-- **Crash recovery** — exponential back-off (1s → 30s); worker disabled after 5 crashes in 3 minutes, re-enabled with `lmcb restart <bot>`.
-- **macOS launchd daemon** — `lmcb daemon install` for boot-time start.
-- **Bots-dir hot-reload** — edit a `bots/*.yaml` and the worker restarts automatically (500 ms debounce).
-- **Attachment support** — images and files downloaded and appended to prompt as `[Attached <kind>: <abs path>]`.
-- **Full SDK error visibility** — Lark SDK errors stream through pino with `util.inspect({depth: 10})`, so nested API failures (`field_violations`, `response.data`) land in the worker log with full structure instead of being truncated to `[Object]`.
-- State lives in `~/.lark-multi-cli-bridge/` (config, bot YAMLs, sessions, logs, media, per-bot `lark-cli` shims).
+The CLI keeps its native session id between messages, so multi-turn context survives — claude `--session`, codex `exec resume`, gemini `--resume`, transparently.
 
-## Quickstart
+## 60-second setup
 
 ```bash
+git clone https://github.com/wang14597/lark-multi-cli-bridge.git
+cd lark-multi-cli-bridge
 pnpm install && pnpm build
-node ./bin/lmcb.mjs init       # interactive wizard: pick backend, scan QR, done
+
+node ./bin/lmcb.mjs init             # interactive: pick backend, scan QR, done
 node ./bin/lmcb.mjs start --foreground
 ```
 
-The `init` wizard walks you through backend selection, bot naming, and app provisioning (scan QR or paste existing credentials). After completing it, message your new bot in Lark.
+`init` walks you through:
+1. **Pick a backend** — `claude` / `codex` / `gemini` (whichever CLI you have).
+2. **Scan a QR** with the Lark mobile app. Lark auto-creates a PersonalAgent app under your tenant and returns `app_id` / `app_secret` to lmcb. **No browser, no developer console required.**
+3. Bot YAML is written to `~/.lark-multi-cli-bridge/bots/<name>.yaml` (chmod 600). Then DM the bot.
 
 Full walkthrough: [docs/quickstart.md](docs/quickstart.md)
+
+## What the bot can do for you
+
+User-visible behaviors, in order of how often they matter:
+
+- **Read images and files you send.** Screenshots, PDFs, code files — all downloaded to local disk and injected into the prompt as `[Attached <kind>: <abs path>]` so the CLI can `Read` them with full path.
+- **Modify your local files.** The CLI runs on your machine with its normal filesystem access. Use `/cd <path>` to scope the working directory; `/ws` to save and switch named workspaces.
+- **Stream output live.** Text, tool calls (`> ✅ **Bash** — pnpm test`), tool failures (inline `↳ AssertionError: …`), thinking panel — all stream into a single Lark card. ⏹ button stops the run mid-stream; `/stop` does the same.
+- **Quote-reply attribution.** First card per turn replies the user's message, so the original gets a `N 条回复` badge and the card renders under `回复 <user>:` — groups stay legible.
+- **Cross-message continuity.** The CLI's native session id is preserved per chat, so follow-ups remember what you were just discussing.
+- **Slash commands in chat** — `/help`, `/new`, `/cd`, `/ws`, `/status`, `/stop`, `/timeout`, `/access`, `/sessions`, `/reconnect`, `/doctor`.
+- **Attachment-aware groups.** @-mention to invoke in groups; reply-quote to point the bot at a specific message; the bridge expands `merge_forward` parents so the bot sees the actual thread context.
+
+## When one bot isn't enough
+
+Designed for **one developer's bots on one machine**, but inside that scope it scales cleanly:
+
+- **Different backends side by side.** `claude-bot` + `codex-bot` + `gemini-bot` from one supervisor; each gets its own Lark identity, crash budget, and conversation state.
+- **Same backend, multiple personas.** Run `claude-personal-bot` and `claude-team-bot` from separate Lark apps with their own access lists and cwds.
+- **Same chat, multiple bots, no bleed.** SessionStore is keyed per `(chatId, botName)` — claude's UUID and codex's thread_id never cross-feed, so a single group can hold parallel conversations with different agents.
+- **Per-bot `lark-cli` identity.** Every `lark-cli` call from inside the LLM subprocess routes to the calling bot's profile via a per-bot PATH shim (`--profile <app_id>` pinned). No identity leakage even with many bots active.
+
+## Operational essentials
+
+- **Crash recovery** — exponential back-off (1s → 30s); worker disabled after 5 crashes in 3 minutes, re-enabled with `lmcb restart <bot>`.
+- **macOS launchd daemon** — `lmcb daemon install` for boot-time start. Linux works in foreground; systemd unit generation deferred.
+- **Bots-dir hot-reload** — edit a `bots/*.yaml` and the worker restarts (500 ms debounce).
+- **Preempt + 500 ms batch** — rapid follow-ups merge into a single CLI run rather than spawning a redundant one; the reply quote pins to the latest message in the batch.
+- **Full SDK error visibility** — Lark SDK errors stream through pino with `util.inspect({depth: 10})`; nested API failures (`field_violations`, `response.data`) land in worker logs intact instead of being truncated to `[Object]`.
+- **Access control per bot** — allowlist by user or chat; the app owner is implicit admin.
+- **All state under `~/.lark-multi-cli-bridge/`** — config, bot YAMLs, sessions (per (chatId, botName)), logs, media, per-bot `lark-cli` shims.
 
 ## Configuration
 
