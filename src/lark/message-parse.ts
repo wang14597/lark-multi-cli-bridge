@@ -221,6 +221,11 @@ export function parseIngressEvent(raw: unknown, opts: ParseOpts = {}): IngressMe
   const messageId = asStr(msg['message_id']);
   if (!chatId || !messageId) return undefined;
 
+  // `parent_id` is present when the user reply-quoted another message. The
+  // worker uses this to async-fetch the quoted content via the IM SDK; the
+  // parser stays pure-sync and just surfaces the id.
+  const parentMessageId = asStr(msg['parent_id']);
+
   const rawMentions = asArr(msg['mentions']) ?? [];
   const mentions = rawMentions
     .map(asMention)
@@ -330,6 +335,7 @@ export function parseIngressEvent(raw: unknown, opts: ParseOpts = {}): IngressMe
     }),
     rawType,
     attachments,
+    ...(parentMessageId !== undefined ? { parentMessageId } : {}),
     ...(cardJson !== undefined ? { cardJson } : {}),
     receivedAt: new Date().toISOString(),
   };

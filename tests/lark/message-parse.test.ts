@@ -230,4 +230,36 @@ describe('parseIngressEvent', () => {
     // Should mention the count
     expect(m?.text).toContain('3');
   });
+
+  // -----------------------------------------------------------------------
+  // Reply-quote (parent_id) tests
+  // -----------------------------------------------------------------------
+
+  it('extracts parentMessageId when the message reply-quotes another message', () => {
+    const replyQuoteMsg = {
+      event: {
+        sender: { sender_id: { open_id: 'ou_user7' } },
+        message: {
+          message_id: 'om_reply_1',
+          parent_id: 'om_parent_1',
+          chat_id: 'oc_chat5',
+          chat_type: 'group',
+          message_type: 'text',
+          create_time: '1700000006000',
+          content: JSON.stringify({ text: 'what about this?' }),
+          mentions: [],
+        },
+      },
+    };
+    const m = parseIngressEvent(replyQuoteMsg);
+    expect(m).toBeDefined();
+    expect(m?.parentMessageId).toBe('om_parent_1');
+    expect(m?.text).toBe('what about this?');
+  });
+
+  it('leaves parentMessageId undefined for normal (non-quoting) messages', () => {
+    const m = parseIngressEvent(sampleP2pText);
+    expect(m).toBeDefined();
+    expect(m?.parentMessageId).toBeUndefined();
+  });
 });
