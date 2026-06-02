@@ -21,8 +21,9 @@ export interface DispatcherOpts {
   resolveIdleTimeoutMs?: (chatId: string) => number | undefined;
   prefixPrompt?: (chatId: string, prompt: string) => string;
   // Env merged into every adapter.run() invocation. Per-request env wins on
-  // key collision. Use for static per-worker identity injection, e.g.
-  // LARKSUITE_CLI_APP_ID/SECRET that locks every lark-cli child to one bot.
+  // key collision. Use for static per-worker identity injection — today this
+  // is a PATH prefix pointing at the bot's lark-cli profile shim (see
+  // src/lark/lark-cli-provision.ts).
   extraEnv?: Record<string, string>;
 }
 
