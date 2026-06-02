@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: MIT
+// Dispatcher.extraEnv is the channel by which worker startup pins lark-cli
+// identity into every LLM child. Today it's used to prepend a per-bot PATH
+// shim; tomorrow it could carry other static per-worker identity. Tests
+// here cover the merge mechanism, not the specific keys.
 import { describe, it, expect, vi } from 'vitest';
 import { Dispatcher } from '../../src/worker/dispatcher.js';
 import type { Adapter, AdapterEvent, RunContext } from '../../src/adapters/types.js';
