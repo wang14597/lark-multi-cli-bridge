@@ -125,104 +125,73 @@ export class CodexAdapter implements Adapter {
 
   async *run(ctx: RunContext): AsyncIterable<AdapterEvent> {
     const jsonMode = this.opts.jsonMode ?? true;
+    // codex 0.130.0 removed `--session <id>`. Session continuation is now a
+    // subcommand: `codex exec resume [OPTIONS] [SESSION_ID] [PROMPT]`.
+    const baseArgs: string[] = ['exec'];
+    if (ctx.sessionId) baseArgs.push('resume');
+    if (jsonMode) baseArgs.push('--json');
+    // codex exec refuses to run outside a git repo (or trusted dir) without this flag.
+    // Default on for bridge use: bots commonly point at $HOME or other non-repo cwds.
+    if ((this.opts.skipGitRepoCheck ?? true) === true) baseArgs.push('--skip-git-repo-check');
+    if (this.opts.model) baseArgs.push('--model', this.opts.model);
+    baseArgs.push(...(this.opts.extraArgs ?? []));
+    // resume subcommand takes SESSION_ID as a positional arg before PROMPT.
+    if (ctx.sessionId) baseArgs.push(ctx.sessionId);
 
     // codex exec has no native --append-system-prompt equivalent, so prepend
     // the system prompt to ctx.prompt with a '\n\n---\n\n' separator.
     const finalPrompt = this.opts.appendSystemPrompt
       ? `${this.opts.appendSystemPrompt}\n\n---\n\n${ctx.prompt}`
       : ctx.prompt;
+    baseArgs.push(finalPrompt);
 
-    // Retry loop: codex 0.130.0 emits
-    //   "thread/resume failed: no rollout found for thread id <id>"
-    // when SessionStore points at a rollout that no longer exists on disk
-    // (codex auto-cleaned it, ~/.codex was reset, or the prior session
-    // never committed a rollout). When that happens we drop the stale
-    // sessionId and re-run the same prompt from scratch — the user's
-    // dispatch then succeeds, a fresh thread_id arrives via
-    // `session-start`, and onSessionUpdate replaces the dead sessionId in
-    // SessionStore. The fallback runs at most once per dispatch.
-    let attemptSessionId = ctx.sessionId;
-    let staleFallbackUsed = false;
+    let finalText = '';
+    let sessionId = ctx.sessionId ?? '';
+    let doneEmitted = false;
 
-    for (;;) {
-      // codex 0.130.0 removed `--session <id>`. Session continuation is now
-      // a subcommand: `codex exec resume [OPTIONS] [SESSION_ID] [PROMPT]`.
-      const baseArgs: string[] = ['exec'];
-      if (attemptSessionId) baseArgs.push('resume');
-      if (jsonMode) baseArgs.push('--json');
-      // codex exec refuses to run outside a git repo (or trusted dir) without this flag.
-      // Default on for bridge use: bots commonly point at $HOME or other non-repo cwds.
-      if ((this.opts.skipGitRepoCheck ?? true) === true) baseArgs.push('--skip-git-repo-check');
-      if (this.opts.model) baseArgs.push('--model', this.opts.model);
-      baseArgs.push(...(this.opts.extraArgs ?? []));
-      // resume subcommand takes SESSION_ID as a positional arg before PROMPT.
-      if (attemptSessionId) baseArgs.push(attemptSessionId);
-      baseArgs.push(finalPrompt);
-
-      let finalText = '';
-      let sessionId = attemptSessionId ?? '';
-      let doneEmitted = false;
-      let staleRetry = false;
-
-      try {
-        for await (const line of spawnWithLifecycle(this.opts.cliPath ?? 'codex', baseArgs, {
-          cwd: ctx.cwd,
-          env: { ...process.env, ...ctx.env },
-          signal: ctx.signal,
-          idleTimeoutMs: ctx.idleTimeoutMs,
-        })) {
-          if (jsonMode) {
-            for (const ev of parseCodexJsonLine(line)) {
-              if (ev.type === 'session-start') sessionId = ev.sessionId;
-              if (ev.type === 'text-delta') finalText += ev.text;
-              if (ev.type === 'done') {
-                doneEmitted = true;
-                // Patch in the running sessionId and accumulated finalText
-                // since the parser doesn't see them at line-parse time.
-                yield {
-                  ...ev,
-                  sessionId: ev.sessionId || sessionId,
-                  finalText: ev.finalText || finalText,
-                };
-                continue;
-              }
-              yield ev;
+    try {
+      for await (const line of spawnWithLifecycle(this.opts.cliPath ?? 'codex', baseArgs, {
+        cwd: ctx.cwd,
+        env: { ...process.env, ...ctx.env },
+        signal: ctx.signal,
+        idleTimeoutMs: ctx.idleTimeoutMs,
+      })) {
+        if (jsonMode) {
+          for (const ev of parseCodexJsonLine(line)) {
+            if (ev.type === 'session-start') sessionId = ev.sessionId;
+            if (ev.type === 'text-delta') finalText += ev.text;
+            if (ev.type === 'done') {
+              doneEmitted = true;
+              // Patch in the running sessionId and accumulated finalText
+              // since the parser doesn't see them at line-parse time.
+              yield {
+                ...ev,
+                sessionId: ev.sessionId || sessionId,
+                finalText: ev.finalText || finalText,
+              };
+              continue;
             }
-          } else {
-            for (const ev of parsePlainChunk(line + '\n')) {
-              if (ev.type === 'text-delta') finalText += ev.text;
-              yield ev;
-            }
+            yield ev;
+          }
+        } else {
+          for (const ev of parsePlainChunk(line + '\n')) {
+            if (ev.type === 'text-delta') finalText += ev.text;
+            yield ev;
           }
         }
-        // Stream ended cleanly. If no `done` came through (jsonMode without
-        // a recognised terminal event, or plain mode), synthesize one so
-        // downstream card streamers can mark the turn complete instead of
-        // sitting on "thinking" forever.
-        if (!doneEmitted) {
-          yield { type: 'done', sessionId, finalText };
-        }
-        return;
-      } catch (err) {
-        if (err instanceof Error && err.name === 'UserStopError') {
-          throw err;
-        }
-        const msg = (err as Error).message;
-        if (attemptSessionId && !staleFallbackUsed && msg.includes('no rollout found')) {
-          // Stale rollout on disk: retry once without the dead sessionId.
-          // codex bails before producing any stdout for this failure mode,
-          // so no events have leaked to downstream yet — the retry runs
-          // as if the first attempt never happened.
-          attemptSessionId = undefined;
-          staleFallbackUsed = true;
-          staleRetry = true;
-        } else {
-          yield { type: 'error', message: msg, recoverable: false };
-          return;
-        }
       }
-
-      if (!staleRetry) return;
+      // Stream ended cleanly. If no `done` came through (jsonMode without
+      // a recognised terminal event, or plain mode), synthesize one so
+      // downstream card streamers can mark the turn complete instead of
+      // sitting on "thinking" forever.
+      if (!doneEmitted) {
+        yield { type: 'done', sessionId, finalText };
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'UserStopError') {
+        throw err;
+      }
+      yield { type: 'error', message: (err as Error).message, recoverable: false };
     }
   }
 }
