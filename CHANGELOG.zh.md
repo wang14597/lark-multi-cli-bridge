@@ -28,6 +28,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `src/lark/sdk-logger.ts` —— 实现 Lark SDK `Logger` 接口，转发到 pino 并完整展开对象。
 - 在 `src/adapters/gemini.ts` 中新增导出 `parseGeminiJsonLine`，与适配器并列（可独立单测）。
 - 新增测试 fixture：`tests/adapters/__fixtures__/gemini/stream-json-{simple,tools}.jsonl`，以及 `tests/worker/lark-sink.test.ts`（同时覆盖 reply 与顶层 `im.message.create` 两条分支）。
+- **每次变更随附文档的追踪约定。** 新增根目录 `CLAUDE.md`,规定每个逻辑变更都要在 `docs/changes/` 下产出双语文档;新增 `docs/changes/{TEMPLATE,INDEX}.{md,zh.md}` 以及强制的 `architecture.md` 同步规则。顺手刷新 `architecture.md` 版本标注(v0.4.0 → v0.7.1)。详见 [docs/changes/2026-06-02-introduce-change-tracking.zh.md](docs/changes/2026-06-02-introduce-change-tracking.zh.md)。
 
 ## [v0.7.1] - 2026-06-02
 

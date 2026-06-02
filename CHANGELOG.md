@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file. Format insp
 - New `src/lark/sdk-logger.ts` — Lark SDK `Logger` interface implementation that proxies to pino with full-depth inspect.
 - New exported `parseGeminiJsonLine` in `src/adapters/gemini.ts` alongside the adapter (independently unit-tested).
 - New test fixtures: `tests/adapters/__fixtures__/gemini/stream-json-{simple,tools}.jsonl`, plus `tests/worker/lark-sink.test.ts` covering both reply and top-level `im.message.create` branches.
+- **Per-change documentation tracking convention.** New root `CLAUDE.md` defines the rule that every logical change ships with a bilingual doc under `docs/changes/`; added `docs/changes/{TEMPLATE,INDEX}.{md,zh.md}` and a mandatory `architecture.md` sync rule. Refreshed the `architecture.md` version marker (v0.4.0 → v0.7.1). See [docs/changes/2026-06-02-introduce-change-tracking.md](docs/changes/2026-06-02-introduce-change-tracking.md).
 
 ## [v0.7.1] - 2026-06-02
 
