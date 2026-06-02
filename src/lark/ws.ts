@@ -5,12 +5,17 @@ import { parseIngressEvent } from './message-parse.js';
 import type { IngressMessage } from './types.js';
 import { parseCardActionEvent } from './card-action.js';
 import type { CardActionEvent } from './card-action.js';
+import type { SdkLogger } from './sdk-logger.js';
 
 export interface LarkWsOpts {
   appId: string;
   appSecret: string;
   domain?: 'lark' | 'feishu';
   botSelfOpenId?: string;
+  // Same rationale as LarkClientOpts.logger — without this, the SDK's
+  // default console-based logger truncates SDK-level errors (auth, ws
+  // reconnect, event dispatch failures) and they're impossible to debug.
+  logger?: SdkLogger;
 }
 
 // SDK adaptation note: The im.message.receive_v1 handler in IHandles receives
@@ -56,6 +61,7 @@ export class LarkWsClient extends EventEmitter {
       appSecret: this.opts.appSecret,
       domain: this.opts.domain === 'feishu' ? Lark.Domain.Feishu : Lark.Domain.Lark,
       loggerLevel: Lark.LoggerLevel.warn,
+      ...(this.opts.logger ? { logger: this.opts.logger } : {}),
     });
     this.wsClient = wsClient;
 

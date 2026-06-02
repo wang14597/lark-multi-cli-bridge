@@ -16,6 +16,7 @@ import { createLogger } from '../telemetry/logger.js';
 import { buildAdapter } from '../adapters/registry.js';
 import { createLarkClient, fetchAppOwnerOpenId, fetchBotSelfOpenId } from '../lark/client.js';
 import { LarkWsClient } from '../lark/ws.js';
+import { adaptLarkLogger } from '../lark/sdk-logger.js';
 import { CardStreamer } from './card-streamer.js';
 import { LarkCardSink } from './lark-sink.js';
 import { Dispatcher } from './dispatcher.js';
@@ -108,10 +109,17 @@ export async function runWorker(botName: string): Promise<void> {
     PATH: `${shimDir}:${process.env.PATH ?? ''}`,
   };
 
+  // Route Lark SDK's own logger through pino so SDK-level errors (auth
+  // refresh failures, API 4xx/5xx with field_violations, WS reconnect)
+  // land in the worker log file with full structure instead of getting
+  // truncated to `[Object]` / `[Array]` by Node's default console.log.
+  const sdkLogger = adaptLarkLogger(log);
+
   const client = createLarkClient({
     appId: bot.lark.app_id,
     appSecret: bot.lark.app_secret,
     domain: bot.lark.tenant,
+    logger: sdkLogger,
   });
 
   const appOwnerOpenId =
@@ -137,6 +145,7 @@ export async function runWorker(botName: string): Promise<void> {
     appSecret: bot.lark.app_secret,
     domain: bot.lark.tenant,
     ...(botSelfOpenId ? { botSelfOpenId } : {}),
+    logger: sdkLogger,
   });
 
   const reconnector = { reconnect: async (): Promise<void> => { await ws.stop(); await ws.start(); } };

@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: MIT
 import * as Lark from '@larksuiteoapi/node-sdk';
+import type { SdkLogger } from './sdk-logger.js';
 
 export interface LarkClientOpts {
   appId: string;
   appSecret: string;
   domain?: 'lark' | 'feishu';
+  // Optional custom logger. Without it, the SDK falls back to console.log
+  // which truncates nested error payloads via util.inspect's default
+  // depth. Pass adaptLarkLogger(workerPino) at the call site to get full
+  // structured errors in the worker log file.
+  logger?: SdkLogger;
 }
 
 export function createLarkClient(opts: LarkClientOpts): Lark.Client {
@@ -13,6 +19,7 @@ export function createLarkClient(opts: LarkClientOpts): Lark.Client {
     appSecret: opts.appSecret,
     domain: opts.domain === 'feishu' ? Lark.Domain.Feishu : Lark.Domain.Lark,
     loggerLevel: Lark.LoggerLevel.warn,
+    ...(opts.logger ? { logger: opts.logger } : {}),
   });
 }
 
