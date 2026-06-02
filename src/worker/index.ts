@@ -204,7 +204,11 @@ export async function runWorker(botName: string): Promise<void> {
     // block. The asMessageGetClient cast narrows the full SDK Client down to
     // the slice fetch-quote actually depends on.
     if (msg.parentMessageId) {
-      const quoted = await fetchQuotedContext(asMessageGetClient(client), msg.parentMessageId);
+      const quoted = await fetchQuotedContext(
+        asMessageGetClient(client),
+        msg.parentMessageId,
+        { openId: botSelfOpenId ?? '', name: bot.name },
+      );
       if (quoted) {
         msg.quoted = quoted;
         log.info(

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
-import type * as Lark from '@larksuiteoapi/node-sdk';
+import * as Lark from '@larksuiteoapi/node-sdk';
+import { normalize } from '@larksuiteoapi/node-sdk';
+import type { ApiMessageItem, RawMessageEvent } from '@larksuiteoapi/node-sdk';
 import { extractPromptFromContent } from './message-parse.js';
 import type { QuotedMessage } from './types.js';
 
@@ -38,18 +40,130 @@ export interface MessageGetClient {
 }
 
 /**
+ * Identity for the bot, threaded into `normalize`. Required by the SDK's
+ * NormalizeOptions; the merge_forward converter uses it to label which
+ * forwarded sub-messages were authored by the bot itself. Defaults are safe
+ * if the worker hasn't resolved its open_id yet.
+ */
+export interface QuoteBotIdentity {
+  openId: string;
+  name: string;
+}
+
+/**
+ * Pre-expand an interactive sub-message body so the SDK's merge_forward
+ * converter (walkCard) renders something useful instead of the literal
+ * `[interactive card]` placeholder.
+ *
+ * Mechanism: walkCard recognises `plain_text` / `lark_md` / `markdown` tags
+ * as text-bearing. We wrap the pretty-printed card JSON inside a `plain_text`
+ * node — same surface lmcb's live-card `<interactive_card>` block exposes —
+ * so the LLM sees the actual card content quoted inside the merge_forward.
+ */
+function preExpandInteractive(item: QuoteApiMessageItem): QuoteApiMessageItem {
+  if (item.msg_type !== 'interactive') return item;
+  const raw = item.body?.content;
+  if (typeof raw !== 'string' || raw.length === 0) return item;
+  let pretty: string;
+  try {
+    pretty = JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    pretty = raw;
+  }
+  const wrapped = JSON.stringify({
+    tag: 'plain_text',
+    content: `<interactive_card>\n${pretty}\n</interactive_card>`,
+  });
+  return { ...item, body: { ...item.body, content: wrapped } };
+}
+
+/**
+ * Render a merge_forward parent through the SDK `normalize` pipeline so the
+ * resulting `<forwarded_messages>` block carries the actual flattened
+ * sub-messages instead of just a count marker.
+ *
+ * `fetchSubMessages` reuses the already-loaded `items` for the parent id (the
+ * SDK fetches them again otherwise) and falls back to a fresh API call for
+ * nested merge_forward layers. Interactive sub-messages get pre-expanded so
+ * their content survives walkCard.
+ */
+async function renderMergeForward(
+  client: MessageGetClient,
+  parent: QuoteApiMessageItem,
+  items: QuoteApiMessageItem[],
+  botIdentity: QuoteBotIdentity,
+): Promise<string | undefined> {
+  const fakeRaw: RawMessageEvent = {
+    sender: { sender_id: { open_id: parent.sender?.id ?? '' } },
+    message: {
+      message_id: parent.message_id!,
+      // chat_id / chat_type aren't validated by normalize; empty + 'group'
+      // are the safest defaults (matches the reference impl).
+      chat_id: '',
+      chat_type: 'group',
+      message_type: 'merge_forward',
+      content: parent.body?.content ?? '',
+      ...(parent.create_time !== undefined
+        ? { create_time: String(parent.create_time) }
+        : {}),
+      // The SDK's RawMention type expects `{ id: { open_id, ... } }` but the
+      // get-response mentions are flat `{ id: string, id_type }`. The SDK
+      // tolerates either at runtime; the cast just bypasses the type mismatch.
+      // Cast to NonNullable so exactOptionalPropertyTypes doesn't reject the
+      // possibly-undefined element type from RawMessageEvent's optional field.
+      ...(parent.mentions
+        ? { mentions: parent.mentions as unknown as NonNullable<RawMessageEvent['message']['mentions']> }
+        : {}),
+    },
+  };
+
+  const fetchSubMessages = async (mid: string): Promise<ApiMessageItem[]> => {
+    if (mid === parent.message_id) {
+      return items.map(preExpandInteractive) as unknown as ApiMessageItem[];
+    }
+    // Nested merge_forward: pull fresh from the API. Same card-content flag so
+    // any v2 cards inside come back as their real schema-2.0 body.
+    try {
+      const r = await client.im.v1.message.get({
+        path: { message_id: mid },
+        params: { card_msg_content_type: 'user_card_content' },
+      });
+      return (r?.data?.items ?? []).map(preExpandInteractive) as unknown as ApiMessageItem[];
+    } catch {
+      return [];
+    }
+  };
+
+  try {
+    const normalized = await normalize(fakeRaw, {
+      botIdentity,
+      fetchSubMessages,
+      // We want the raw forwarded text, not the trimmed @bot mention form.
+      stripBotMentions: false,
+    });
+    return normalized.content;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Fetch and render the content of a message the user is reply-quoting.
  *
  * Strategy:
  * 1. Call `im.v1.message.get` with `card_msg_content_type=user_card_content` so
  *    interactive cards come back as their original schema-2.0 body, not the
  *    "[请升级客户端]" v1 fallback the platform double-emits.
- * 2. For `interactive` messages, surface the raw card JSON unchanged — same
+ * 2. For `interactive` parents, surface the raw card JSON unchanged — same
  *    shape the bridge already injects for the current-turn `<interactive_card>`
  *    block, so the LLM-side conventions stay symmetric.
- * 3. For everything else, run through `extractPromptFromContent` — the same
+ * 3. For `merge_forward` parents, route through SDK `normalize` with a
+ *    `fetchSubMessages` callback so the resulting `<forwarded_messages>` block
+ *    is expanded with the actual sub-message contents (text + interactive
+ *    cards), not just a count marker.
+ * 4. For everything else, run through `extractPromptFromContent` — the same
  *    pure function the live-event parser uses. text/post get flattened, audio
- *    gets a `[audio N seconds]` marker, merge_forward gets a count marker.
+ *    gets a `[audio N seconds]` marker.
  *
  * Returns `undefined` on any API/parse failure — the caller should still pass
  * the user's message through; the only loss is the quoted-block.
@@ -57,20 +171,20 @@ export interface MessageGetClient {
 export async function fetchQuotedContext(
   client: MessageGetClient,
   messageId: string,
+  botIdentity: QuoteBotIdentity = { openId: '', name: '' },
 ): Promise<QuotedMessage | undefined> {
-  let parent: QuoteApiMessageItem | undefined;
+  let items: QuoteApiMessageItem[] = [];
   try {
     const r = await client.im.v1.message.get({
       path: { message_id: messageId },
-      // Ask for the original card body (incl. v2 user_dsl) instead of the
-      // legacy v1-canonical fallback. SDK ≥ 1.65.0 supports this.
       params: { card_msg_content_type: 'user_card_content' },
     });
-    parent = r?.data?.items?.[0];
+    items = r?.data?.items ?? [];
   } catch {
     return undefined;
   }
 
+  const parent = items[0];
   if (!parent?.message_id) return undefined;
 
   const msgType = parent.msg_type ?? 'text';
@@ -86,11 +200,17 @@ export async function fetchQuotedContext(
     } catch {
       content = rawContent;
     }
+  } else if (msgType === 'merge_forward') {
+    const expanded = await renderMergeForward(client, parent, items, botIdentity);
+    // normalize failure / empty output → fall back to the count marker so the
+    // LLM at least knows what was quoted.
+    content = expanded && expanded.length > 0
+      ? expanded
+      : (extractPromptFromContent(msgType, rawContent, []).text || '[merge_forward messages]');
   } else {
     const { text } = extractPromptFromContent(msgType, rawContent, []);
-    // For empty extractor output (audio/merge_forward/image/file with no
-    // metadata), leave a bare type marker so the LLM at least knows what was
-    // quoted.
+    // For empty extractor output (audio/image/file with no metadata), leave a
+    // bare type marker so the LLM at least knows what was quoted.
     content = text.length > 0 ? text : `[${msgType}]`;
   }
 

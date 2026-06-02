@@ -13,6 +13,17 @@ function stubClient(item: unknown): {
   return { client, spy };
 }
 
+function stubClientItems(items: unknown[]): {
+  client: MessageGetClient;
+  spy: ReturnType<typeof vi.fn>;
+} {
+  const spy = vi.fn().mockResolvedValue({ data: { items } });
+  const client: MessageGetClient = {
+    im: { v1: { message: { get: spy } } },
+  };
+  return { client, spy };
+}
+
 describe('fetchQuotedContext', () => {
   it('flattens a text parent message and surfaces sender + timestamp', async () => {
     const { client, spy } = stubClient({
@@ -121,6 +132,56 @@ describe('fetchQuotedContext', () => {
     const q = await fetchQuotedContext(client, 'om_anon');
     expect(q?.senderOpenId).toBe('ou_eve');
     expect(q?.senderName).toBeUndefined();
+  });
+
+  it('expands merge_forward parents into a <forwarded_messages> block via SDK normalize', async () => {
+    // im.v1.message.get on a merge_forward parent returns: the parent itself
+    // plus all sub-messages (linked via upper_message_id). The SDK normalize
+    // pipeline walks that list and emits a <forwarded_messages> envelope.
+    const items = [
+      {
+        message_id: 'om_parent',
+        msg_type: 'merge_forward',
+        create_time: '1700000010000',
+        sender: { id: 'ou_forwarder' },
+        body: { content: JSON.stringify({ message_list: [] }) },
+      },
+      {
+        message_id: 'om_sub_a',
+        upper_message_id: 'om_parent',
+        msg_type: 'text',
+        create_time: '1700000011000',
+        sender: { id: 'ou_alice', sender_name: 'Alice' },
+        body: { content: JSON.stringify({ text: 'sub message one' }) },
+      },
+      {
+        message_id: 'om_sub_b',
+        upper_message_id: 'om_parent',
+        msg_type: 'interactive',
+        create_time: '1700000012000',
+        sender: { id: 'ou_bob' },
+        body: {
+          content: JSON.stringify({
+            schema: '2.0',
+            body: { elements: [{ tag: 'markdown', content: 'a card body' }] },
+          }),
+        },
+      },
+    ];
+    const { client } = stubClientItems(items);
+    const q = await fetchQuotedContext(client, 'om_parent', {
+      openId: 'ou_bot',
+      name: 'mybot',
+    });
+    expect(q).toBeDefined();
+    expect(q?.type).toBe('merge_forward');
+    // The expanded content carries the SDK's forwarded envelope and the
+    // sub-message texts (text directly; interactive routed through our
+    // preExpandInteractive helper as an <interactive_card> block).
+    expect(q?.content).toContain('<forwarded_messages>');
+    expect(q?.content).toContain('sub message one');
+    expect(q?.content).toContain('<interactive_card>');
+    expect(q?.content).toContain('a card body');
   });
 
   it('handles missing create_time by emitting an empty createdAt', async () => {
