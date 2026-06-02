@@ -22,7 +22,7 @@ export function* chunkToEvents(chunk: string): Iterable<AdapterEvent> {
 
 // Shape of a single line emitted by `gemini -o stream-json` (0.44+).
 interface GeminiStreamLine {
-  type: 'init' | 'message' | 'result';
+  type: 'init' | 'message' | 'tool_use' | 'tool_result' | 'result';
   // init
   session_id?: string;
   model?: string;
@@ -30,6 +30,11 @@ interface GeminiStreamLine {
   role?: 'user' | 'assistant' | string;
   content?: string;
   delta?: boolean;
+  // tool_use / tool_result
+  tool_name?: string;
+  tool_id?: string;
+  parameters?: unknown;
+  output?: string;
   // result
   status?: 'success' | 'error' | string;
   stats?: {
@@ -40,7 +45,19 @@ interface GeminiStreamLine {
     duration_ms?: number;
     tool_calls?: number;
   };
-  error?: { message?: string } | string;
+  error?: { type?: string; message?: string } | string;
+}
+
+/**
+ * Gemini's tool_result lines carry only tool_id, not tool_name. The id is
+ * formatted as `<name>__<name>_<timestamp>_<index>` (verified on 0.44.1),
+ * so we slice off the first `__` to recover the human-readable tool name
+ * for AdapterEvent.tool-result.name. If the format changes upstream, the
+ * dedicated test in gemini.test.ts will catch it.
+ */
+function toolNameFromId(toolId: string): string {
+  const i = toolId.indexOf('__');
+  return i === -1 ? toolId : toolId.slice(0, i);
 }
 
 /**
@@ -74,6 +91,27 @@ export function* parseGeminiJsonLine(line: string): Iterable<AdapterEvent> {
     if (obj.role === 'assistant' && typeof obj.content === 'string' && obj.content.length > 0) {
       yield { type: 'text-delta', text: obj.content };
     }
+    return;
+  }
+  if (obj.type === 'tool_use' && typeof obj.tool_id === 'string' && typeof obj.tool_name === 'string') {
+    yield {
+      type: 'tool-call',
+      callId: obj.tool_id,
+      name: obj.tool_name,
+      input: obj.parameters ?? {},
+    };
+    return;
+  }
+  if (obj.type === 'tool_result' && typeof obj.tool_id === 'string') {
+    const ok = obj.status === 'success';
+    const summary = typeof obj.output === 'string' ? obj.output : undefined;
+    yield {
+      type: 'tool-result',
+      callId: obj.tool_id,
+      name: toolNameFromId(obj.tool_id),
+      ok,
+      ...(summary !== undefined ? { summary } : {}),
+    };
     return;
   }
   if (obj.type === 'result') {

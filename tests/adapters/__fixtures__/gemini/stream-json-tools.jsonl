@@ -1,0 +1,8 @@
+{"type":"init","timestamp":"2026-06-02T09:57:14.943Z","session_id":"d09d7842-702f-4927-8524-bf72d9f548e7","model":"gemini-3-flash-preview"}
+{"type":"message","timestamp":"2026-06-02T09:57:14.946Z","role":"user","content":"BLUE_FOX test"}
+{"type":"tool_use","timestamp":"2026-06-02T09:57:26.413Z","tool_name":"list_directory","tool_id":"list_directory__list_directory_1780394246411_1","parameters":{"dir_path":"."}}
+{"type":"tool_result","timestamp":"2026-06-02T09:57:26.432Z","tool_id":"list_directory__list_directory_1780394246411_1","status":"success","output":"Directory is empty."}
+{"type":"tool_use","timestamp":"2026-06-02T09:57:35.387Z","tool_name":"run_shell_command","tool_id":"run_shell_command__run_shell_command_1780394255387_0","parameters":{"command":"env | grep -i BLUE_FOX"}}
+{"type":"tool_result","timestamp":"2026-06-02T09:57:45.330Z","tool_id":"run_shell_command__run_shell_command_1780394255387_0","status":"error","output":"Tool \"run_shell_command\" not found.","error":{"type":"tool_not_registered","message":"Tool \"run_shell_command\" not found."}}
+{"type":"message","timestamp":"2026-06-02T09:58:30.000Z","role":"assistant","content":"BLUE_FOX 不是已知的项目名","delta":true}
+{"type":"result","timestamp":"2026-06-02T09:58:31.000Z","status":"success","stats":{"total_tokens":15000,"input_tokens":14500,"output_tokens":50}}

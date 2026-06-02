@@ -99,6 +99,80 @@ describe('GeminiAdapter.parseGeminiJsonLine', () => {
   it('returns nothing for unrecognised type (forward compat)', () => {
     expect([...parseGeminiJsonLine('{"type":"some-future-event"}')]).toEqual([]);
   });
+
+  // gemini's agent loop emits tool_use / tool_result before/around the
+  // final assistant message. Missing this branch is what kept the worker
+  // card stuck on "正在思考" on the first integration run.
+  describe('tool_use / tool_result', () => {
+    it('maps tool_use → tool-call with name + input + callId', () => {
+      const evs = [
+        ...parseGeminiJsonLine(
+          '{"type":"tool_use","tool_name":"list_directory","tool_id":"list_directory__x_1","parameters":{"dir_path":"."}}',
+        ),
+      ];
+      expect(evs).toEqual([
+        {
+          type: 'tool-call',
+          callId: 'list_directory__x_1',
+          name: 'list_directory',
+          input: { dir_path: '.' },
+        },
+      ]);
+    });
+
+    it('maps tool_result success → tool-result with ok=true and summary', () => {
+      const evs = [
+        ...parseGeminiJsonLine(
+          '{"type":"tool_result","tool_id":"list_directory__x_1","status":"success","output":"Directory is empty."}',
+        ),
+      ];
+      expect(evs).toEqual([
+        {
+          type: 'tool-result',
+          callId: 'list_directory__x_1',
+          name: 'list_directory',
+          ok: true,
+          summary: 'Directory is empty.',
+        },
+      ]);
+    });
+
+    it('maps tool_result error → tool-result with ok=false', () => {
+      const evs = [
+        ...parseGeminiJsonLine(
+          '{"type":"tool_result","tool_id":"run_shell_command__y_2","status":"error","output":"Tool not found"}',
+        ),
+      ];
+      expect(evs[0]).toMatchObject({
+        type: 'tool-result',
+        callId: 'run_shell_command__y_2',
+        name: 'run_shell_command',
+        ok: false,
+        summary: 'Tool not found',
+      });
+    });
+
+    it('falls back to tool_id when toolNameFromId cannot find the delimiter', () => {
+      const evs = [
+        ...parseGeminiJsonLine(
+          '{"type":"tool_result","tool_id":"weirdid","status":"success","output":"ok"}',
+        ),
+      ];
+      expect(evs[0]).toMatchObject({ name: 'weirdid' });
+    });
+
+    it('replays the full agent-loop fixture: init → tool round-trips → assistant → done', () => {
+      const events = eventsFromFixture('stream-json-tools.jsonl');
+      const types = events.map((e) => e.type);
+      // Whatever else changes, this is the minimal happy path the worker
+      // card relies on to leave the "thinking" state.
+      expect(types[0]).toBe('session-start');
+      expect(types).toContain('tool-call');
+      expect(types).toContain('tool-result');
+      expect(types).toContain('text-delta');
+      expect(types[types.length - 1]).toBe('done');
+    });
+  });
 });
 
 describe('GeminiAdapter argv shape', () => {
