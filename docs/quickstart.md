@@ -168,7 +168,7 @@ lmcb daemon uninstall && pnpm build && lmcb daemon install
 
 **`99992402 field validation failed` on startup**
 
-This is harmless. It comes from `fetchAppOwnerOpenId` calling an SDK endpoint whose request shape varies across SDK versions. The error is caught; lmcb falls back to no-owner behavior and continues normally. Your bot still works. This will be fixed in a follow-up release.
+Harmless. `fetchAppOwnerOpenId` calls an SDK endpoint whose request shape varies across SDK versions; lmcb catches the error and falls back to no-owner behavior, so your bot still works. The full SDK error payload (including `field_violations`) is logged through pino with depth-10 inspect — to inspect, tail `~/.lark-multi-cli-bridge/logs/workers/<bot>/<date>.log*` and filter for `src=lark-sdk`. Fixing the call shape itself is a follow-up.
 
 **Log locations**
 

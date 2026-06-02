@@ -6,22 +6,26 @@ A Lark/Feishu chat bridge that routes inbound messages to **Claude Code**, **Ope
 
 ## Why
 
-`lark-channel-bridge` and `feishu-claude-code-bridge` each serve a single CLI backend. lmcb fills the gap: you can run a `claude-bot`, a `codex-bot`, and a `gemini-bot` side by side under one supervisor, each with isolated state, independent crash recovery, and the same polished streaming card UI.
+Run a Claude, Codex, and Gemini bot from the same Lark workspace, side by side under one shared supervisor. Each bot keeps its own Lark identity, its own conversation state, its own crash budget, and its own session continuity — but they share the streaming-card UI, the slash-command surface, the access-control model, and the on-disk layout, so operating three bots is barely more work than operating one.
 
 ## Features
 
-- **Multi-bot, multi-backend** — one supervisor forks one worker per bot; each worker connects to Lark via its own bot identity and spawns its own CLI.
+- **Multi-bot, multi-backend** — one supervisor forks one worker per bot; each worker connects to Lark via its own bot identity and spawns its own CLI (`claude` / `codex` / `gemini`).
+- **Per-bot `lark-cli` identity** — at worker startup the bridge registers a `lark-cli` profile for each bot and writes a per-bot PATH shim that pins `--profile <app_id>` on every invocation. The LLM child can call `lark-cli api …` freely; calls always route to the correct bot's identity, even when several bots share one machine.
 - **Scan-to-create onboarding** — `lmcb init` defaults to scanning a QR code with the Lark mobile app; Lark auto-creates an internal-use application under your tenant and returns `app_id`/`app_secret`. No developer console visit required.
-- **Polished streaming cards** — `streaming_mode` progressive updates; collapsible reasoning panel; collapsible tool-call panels (auto-collapses at 3+ calls to stay under Feishu's 30 KB card limit); footer status bar; terminal-state note; stop button.
-- **Preempt + 500 ms batch** — rapid follow-ups merge into a single CLI run instead of spawning a redundant one.
-- **Per-chat session continuity** — multi-turn context preserved via the CLI's own session id.
+- **Polished streaming cards** — `streaming_mode` progressive updates; collapsible reasoning panel; tool calls render as a single markdown blockquote (`> ✅ **Tool** — summary`), with the currently-running tool kept as a live panel and errors surfaced inline with a `↳` follow-up; footer status bar; terminal-state note; ⏹ stop button.
+- **Quote-reply attribution** — the first card per turn is sent via `im.message.reply` against the user's message, so the original gets a `N 条回复` badge and the bot's card renders under a `回复 <user>:` header — clear attribution even in busy group chats.
+- **Per-(chatId, botName) sessions** — two bots active in the same chat keep independent `sessionId` / `cwd`. `claude-bot`'s session UUID is never visible to `codex-bot` (or vice versa), so a single chat can hold parallel conversations with different agents without cross-bleed. Legacy single-slot session files migrate automatically on first load.
+- **Preempt + 500 ms batch** — rapid follow-ups merge into a single CLI run instead of spawning a redundant one. The reply quote pins to the latest message in the batch.
+- **Session continuity** — multi-turn context preserved via the CLI's own session id: claude `--session`, codex `exec resume <thread_id>`, gemini `--resume <uuid>` (stream-json + tool-call rendering on par with claude/codex).
 - **11 slash commands** — `/help`, `/new`, `/cd`, `/ws`, `/status`, `/stop`, `/timeout`, `/access`, `/sessions`, `/reconnect`, `/doctor`.
 - **Per-bot access control** — allowlist by user or chat; app owner is implicit admin.
 - **Crash recovery** — exponential back-off (1s → 30s); worker disabled after 5 crashes in 3 minutes, re-enabled with `lmcb restart <bot>`.
 - **macOS launchd daemon** — `lmcb daemon install` for boot-time start.
 - **Bots-dir hot-reload** — edit a `bots/*.yaml` and the worker restarts automatically (500 ms debounce).
 - **Attachment support** — images and files downloaded and appended to prompt as `[Attached <kind>: <abs path>]`.
-- State lives in `~/.lark-multi-cli-bridge/` (config, bot YAMLs, sessions, logs, media).
+- **Full SDK error visibility** — Lark SDK errors stream through pino with `util.inspect({depth: 10})`, so nested API failures (`field_violations`, `response.data`) land in the worker log with full structure instead of being truncated to `[Object]`.
+- State lives in `~/.lark-multi-cli-bridge/` (config, bot YAMLs, sessions, logs, media, per-bot `lark-cli` shims).
 
 ## Quickstart
 
@@ -140,7 +144,9 @@ backend:
 
 ## Status
 
-Active development. v0.4.0 released. Tested manually with Lark on macOS. Linux is supported for foreground mode; the launchd daemon is macOS-only (systemd support deferred).
+Active development. **v0.7.1 released**; an `[Unreleased]` batch covering quote-reply, per-(chatId, botName) session scoping, gemini 0.44 stream-json, Lark SDK pino logging, and the CardKit 2.0 stop-button fix is queued for v0.7.2 — see [CHANGELOG.md](CHANGELOG.md).
+
+Tested manually with Lark on macOS. Linux works for foreground mode; the launchd daemon is macOS-only (systemd unit generation is deferred).
 
 ## License
 

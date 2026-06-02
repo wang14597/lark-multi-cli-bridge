@@ -37,7 +37,7 @@ The `AdapterEvent` discriminated union has **7 variants**. Your adapter must emi
 
 3. **Register in the registry.** Add a `case 'x': ...` branch to `buildAdapter` in `src/adapters/registry.ts`.
 
-4. **Add fixtures and unit tests.** Place curated CLI output samples under `tests/adapters/__fixtures__/<name>/` and add `tests/adapters/<name>.test.ts` that asserts your parser emits the expected `AdapterEvent` sequence.
+4. **Add fixtures and unit tests.** Fixtures must come from **real CLI output**, not handwritten JSON — the codex 0.130 schema change and the gemini agent-loop `tool_use` lines both went undetected initially because the fixtures were aspirational. Capture a real run with `scripts/record-cli-fixture.sh <backend> <name>` (writes to `tests/adapters/__fixtures__/<backend>/<name>.{jsonl,txt}`), then write `tests/adapters/<backend>.test.ts` that replays the fixture and asserts the expected `AdapterEvent` sequence.
 
 5. **Update docs.** Add the backend to the README feature list and to the quickstart `bot add` examples.
 

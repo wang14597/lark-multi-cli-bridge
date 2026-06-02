@@ -37,7 +37,7 @@ export interface Adapter {
 
 3. **在注册表中注册。** 在 `src/adapters/registry.ts` 的 `buildAdapter` 中添加 `case 'x': ...` 分支。
 
-4. **添加 fixture 和单元测试。** 将精选的 CLI 输出样本放在 `tests/adapters/__fixtures__/<name>/` 下，并添加 `tests/adapters/<name>.test.ts`，断言解析器发出期望的 `AdapterEvent` 序列。
+4. **添加 fixture 和单元测试。** Fixture 必须来自**真实 CLI 输出**，不要手写 JSON——codex 0.130 schema 变化和 gemini agent-loop 的 `tool_use` 行能逃过测试就是因为最初的 fixture 是想象出来的。用 `scripts/record-cli-fixture.sh <backend> <name>` 录制真实输出（写入 `tests/adapters/__fixtures__/<backend>/<name>.{jsonl,txt}`），然后写 `tests/adapters/<backend>.test.ts` 回放 fixture 并断言期望的 `AdapterEvent` 序列。
 
 5. **更新文档。** 在 README 的功能列表和快速开始的 `bot add` 示例中加入新后端。
 
