@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 import { describe, it, expect } from 'vitest';
 import { paths } from '../../src/config/paths.js';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 describe('paths', () => {
   it('exposes the config root under home', () => {
@@ -18,5 +20,18 @@ describe('paths', () => {
     expect(paths.supervisorLog).toBe(`${paths.root}/logs/supervisor.log`);
     expect(paths.media).toBe(`${paths.root}/media`);
     expect(paths.ipcSock).toBe(`${paths.root}/ipc.sock`);
+  });
+});
+
+describe('paths.shimsDir', () => {
+  it('returns ~/.lark-multi-cli-bridge/shims/<bot>', () => {
+    expect(paths.shimsDir('codex-bot')).toBe(
+      join(homedir(), '.lark-multi-cli-bridge', 'shims', 'codex-bot'),
+    );
+  });
+
+  it('rejects bot names containing path separators', () => {
+    expect(() => paths.shimsDir('../etc')).toThrow();
+    expect(() => paths.shimsDir('a/b')).toThrow();
   });
 });
