@@ -145,9 +145,9 @@ export async function runWorker(botName: string): Promise<void> {
 
   const dispatcher = new Dispatcher({
     adapter,
-    makeStreamer: (chatId) =>
+    makeStreamer: (chatId, replyTo) =>
       new CardStreamer({
-        sink: new LarkCardSink(client, chatId),
+        sink: new LarkCardSink(client, chatId, replyTo),
         throttleMs: 500,
         throttleChars: 50,
       }),
@@ -282,6 +282,10 @@ export async function runWorker(botName: string): Promise<void> {
         cwd,
         ...(existing?.sessionId !== undefined ? { sessionId: existing.sessionId } : {}),
         idleTimeoutMs: bot.behavior.idle_timeout_seconds * 1000,
+        // Quote-reply the user's actual message. Card-action handler
+        // (synthesized [card-click] events) intentionally does NOT set
+        // this — those have no real user message to anchor the reply to.
+        replyToMessageId: msg.messageId,
       });
     } catch (err) {
       log.error({ err: (err as Error).message }, 'dispatch failed');

@@ -12,7 +12,12 @@ export class UserStopError extends Error {
 
 export interface DispatcherOpts {
   adapter: Adapter;
-  makeStreamer: (chatId: string) => Pick<
+  // When `replyTo` is provided, the streamer's first card should be sent as a
+  // Lark "回复" (im.message.reply) against that message_id; otherwise it goes
+  // out as a top-level message. The dispatcher passes the LATEST batched
+  // request's replyToMessageId so the reply quotes the most recent user
+  // message rather than the head of a coalesced burst.
+  makeStreamer: (chatId: string, replyTo?: string) => Pick<
     CardStreamer,
     'start' | 'onTextDelta' | 'onToolCall' | 'onToolResult' | 'onError' | 'onDone' | 'onInterrupted'
   >;
@@ -34,6 +39,10 @@ export interface DispatchRequest {
   sessionId?: string;
   idleTimeoutMs: number;
   env?: Record<string, string>;
+  // Lark message_id to quote-reply against for THIS request's first card.
+  // Omit for synthesized events (e.g. card-button callbacks) where there is
+  // no real user message to anchor the reply to.
+  replyToMessageId?: string;
 }
 
 interface ChatLane {
@@ -75,7 +84,21 @@ export class Dispatcher {
 
         const batch = lane.pending.splice(0, lane.pending.length);
         const head = batch[0]!;
-        const merged: DispatchRequest = { ...head, prompt: batch.map((b) => b.prompt).join('\n\n') };
+        const tail = batch[batch.length - 1]!;
+        const merged: DispatchRequest = {
+          ...head,
+          prompt: batch.map((b) => b.prompt).join('\n\n'),
+        };
+        // Reply quote pins to the LATEST batched message — that's the
+        // user's most recent ask, the one they're staring at the reply
+        // for. If tail doesn't carry one (e.g. card-button callback
+        // coalesced with a normal message), explicitly drop head's so it
+        // doesn't shadow tail's "no reply" intent.
+        if (tail.replyToMessageId !== undefined) {
+          merged.replyToMessageId = tail.replyToMessageId;
+        } else {
+          delete merged.replyToMessageId;
+        }
 
         const ac = new AbortController();
         lane.current = { ac, promise: this.dispatchOne(merged, ac.signal) };
@@ -102,7 +125,7 @@ export class Dispatcher {
   }
 
   private async dispatchOne(req: DispatchRequest, signal: AbortSignal): Promise<void> {
-    const streamer = this.opts.makeStreamer(req.chatId);
+    const streamer = this.opts.makeStreamer(req.chatId, req.replyToMessageId);
     await streamer.start();
     const startedAt = Date.now();
     const overrideIdle = this.opts.resolveIdleTimeoutMs?.(req.chatId);
