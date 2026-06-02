@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
-import { join } from 'node:path';
+import { join, delimiter } from 'node:path';
+import { spawn } from 'node:child_process';
+import { access, constants } from 'node:fs/promises';
 
 export interface ProvisionedProfile {
   name: string;
@@ -84,4 +86,64 @@ export async function provisionLarkShim(
     `exec '${realLarkCliPath}' --profile '${bot.lark.app_id}' "$@"\n`;
   await deps.writeFile(shimPath, content, 0o755);
   return shimPath;
+}
+
+export function resolveRealLarkCli(candidatePath: string, shimsRoot: string): string {
+  if (candidatePath.startsWith(shimsRoot + '/') || candidatePath === shimsRoot) {
+    throw new Error(`refusing to use shim as real lark-cli: ${candidatePath}`);
+  }
+  return candidatePath;
+}
+
+/**
+ * Build a runLarkCli that always invokes the real binary (NOT a shim). The
+ * caller is responsible for resolving `realLarkCliPath` via resolveRealLarkCli
+ * before passing it in.
+ */
+export function makeRunLarkCli(
+  realLarkCliPath: string,
+): ProvisionDeps['runLarkCli'] {
+  return (args, opts) =>
+    new Promise((resolve, reject) => {
+      const child = spawn(realLarkCliPath, args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env },
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (d) => {
+        stdout += String(d);
+      });
+      child.stderr.on('data', (d) => {
+        stderr += String(d);
+      });
+      child.on('error', reject);
+      child.on('close', (code) => {
+        resolve({ stdout, stderr, exitCode: code ?? -1 });
+      });
+      if (opts?.stdin !== undefined) {
+        child.stdin.end(opts.stdin);
+      } else {
+        child.stdin.end();
+      }
+    });
+}
+
+/**
+ * Minimal `which` shim — walks PATH looking for an executable named `name`.
+ * Returns the first match. Throws if not found.
+ */
+export async function which(name: string): Promise<string> {
+  const path = process.env.PATH ?? '';
+  for (const dir of path.split(delimiter)) {
+    if (!dir) continue;
+    const candidate = `${dir}/${name}`;
+    try {
+      await access(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // not executable here, keep searching
+    }
+  }
+  throw new Error(`executable not found on PATH: ${name}`);
 }

@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 import { describe, it, expect, vi } from 'vitest';
-import { ensureLarkProfile, provisionLarkShim } from '../../src/lark/lark-cli-provision.js';
+import {
+  ensureLarkProfile,
+  provisionLarkShim,
+  resolveRealLarkCli,
+  which,
+} from '../../src/lark/lark-cli-provision.js';
 
 const bot = {
   name: 'claude-bot',
@@ -159,5 +164,34 @@ describe('provisionLarkShim', () => {
         { writeFile: vi.fn(), mkdirp: vi.fn() },
       ),
     ).rejects.toThrow(/unsafe lark-cli path/);
+  });
+});
+
+describe('resolveRealLarkCli', () => {
+  it('rejects paths inside any lmcb shims dir', () => {
+    expect(() =>
+      resolveRealLarkCli(
+        '/Users/me/.lark-multi-cli-bridge/shims/codex-bot/lark-cli',
+        '/Users/me/.lark-multi-cli-bridge/shims',
+      ),
+    ).toThrow(/refusing to use shim/);
+  });
+
+  it('returns the path unchanged when it lives outside shims', () => {
+    expect(
+      resolveRealLarkCli('/usr/local/bin/lark-cli', '/Users/me/.lark-multi-cli-bridge/shims'),
+    ).toBe('/usr/local/bin/lark-cli');
+  });
+});
+
+describe('which', () => {
+  it('finds an executable on PATH', async () => {
+    // `sh` is always on POSIX PATH for our CI/dev envs
+    const sh = await which('sh');
+    expect(sh).toMatch(/\/sh$/);
+  });
+
+  it('throws when not found', async () => {
+    await expect(which('definitely_not_a_real_binary_xyz123')).rejects.toThrow(/not found on PATH/);
   });
 });
