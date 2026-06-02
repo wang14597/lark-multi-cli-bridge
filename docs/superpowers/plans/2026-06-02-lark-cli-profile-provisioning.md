@@ -221,7 +221,7 @@ describe('ensureLarkProfile', () => {
     });
 
     expect(calls.length).toBe(1);
-    expect(calls[0]!.args).toEqual(['profile', 'list', '--format', 'json']);
+    expect(calls[0]!.args).toEqual(['profile', 'list']);
   });
 });
 ```
@@ -272,7 +272,8 @@ interface LarkCliProfile {
 }
 
 export async function ensureLarkProfile(bot: Bot, deps: ProvisionDeps): Promise<void> {
-  const listed = await deps.runLarkCli(['profile', 'list', '--format', 'json']);
+  // lark-cli 1.0.43/1.0.45 emit JSON by default; there is no --format flag.
+  const listed = await deps.runLarkCli(['profile', 'list']);
   if (listed.exitCode !== 0) {
     throw new Error(`lark-cli profile list failed (exit ${listed.exitCode}): ${listed.stderr}`);
   }

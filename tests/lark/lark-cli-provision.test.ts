@@ -50,7 +50,7 @@ describe('ensureLarkProfile', () => {
     });
 
     expect(calls.length).toBe(1);
-    expect(calls[0]!.args).toEqual(['profile', 'list', '--format', 'json']);
+    expect(calls[0]!.args).toEqual(['profile', 'list']);
   });
 
   it('runs profile add with --app-secret-stdin when app_id missing from list', async () => {
