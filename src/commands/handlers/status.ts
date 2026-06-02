@@ -6,7 +6,7 @@ export const statusHandler: CommandHandler = {
   name: 'status',
   description: 'show backend, cwd, session id, message count for this chat',
   async run(ctx) {
-    const s = ctx.sessions.get(ctx.chatId);
+    const s = ctx.sessions.get(ctx.chatId, ctx.bot.name);
     if (!s) {
       await ctx.reply('no session for this chat yet');
       return;

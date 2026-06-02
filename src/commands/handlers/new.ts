@@ -14,7 +14,7 @@ export const newHandler: CommandHandler = {
   description: 'start a new session; optionally change cwd',
   async run(ctx) {
     const arg = ctx.args[0];
-    const existing = ctx.sessions.get(ctx.chatId);
+    const existing = ctx.sessions.get(ctx.chatId, ctx.bot.name);
     if (!existing && !arg) {
       await ctx.reply('no existing session; pass a path to start: /new <path>');
       return;
@@ -29,10 +29,10 @@ export const newHandler: CommandHandler = {
         bot: ctx.bot.name,
         cwd,
       });
-      await ctx.sessions.reset(ctx.chatId);
+      await ctx.sessions.reset(ctx.chatId, ctx.bot.name);
       await ctx.reply(`new session in ${cwd}`);
     } else {
-      await ctx.sessions.reset(ctx.chatId);
+      await ctx.sessions.reset(ctx.chatId, ctx.bot.name);
       await ctx.reply('new session started');
     }
   },

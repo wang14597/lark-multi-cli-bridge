@@ -12,7 +12,7 @@ export interface CardActionHandlerDeps {
   dispatcher: Pick<Dispatcher, 'enqueue' | 'abort'>;
   log: Logger;
   lastIngressByChat: Map<string, IngressMessage>;
-  sessions: Pick<SessionStore, 'get' | 'getForBot'>;
+  sessions: Pick<SessionStore, 'get'>;
   botDefaultCwd: string;
   botBackendType: string;
   botName: string;
@@ -45,13 +45,11 @@ export function makeCardActionHandler(deps: CardActionHandlerDeps): (act: CardAc
       }
       const synthPrompt = `[card-click] ${JSON.stringify(stripped)}`;
 
-      // Gate sessionId on bot identity (see SessionStore.getForBot). A
-      // button rendered by THIS bot can only continue this bot's session.
-      // cwd falls back to any prior chat entry — that's a chat-level /cd
-      // preference, harmless to inherit cross-bot.
-      const sessionEntry = sessions.getForBot(act.chatId, botName);
-      const cwd =
-        sessionEntry?.cwd ?? sessions.get(act.chatId)?.cwd ?? botDefaultCwd;
+      // Session and cwd are scoped per (chatId, botName). A button
+      // rendered by THIS bot only ever continues this bot's session;
+      // sibling bots in the same chat have their own slot.
+      const sessionEntry = sessions.get(act.chatId, botName);
+      const cwd = sessionEntry?.cwd ?? botDefaultCwd;
 
       log.info({ chatId: act.chatId, synthPrompt }, 'card-action: __claude_cb -> enqueue');
       try {

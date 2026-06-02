@@ -14,9 +14,9 @@ export const cdHandler: CommandHandler = {
     }
     const reset = ctx.args.includes('--new');
     const cwd = path.startsWith('~') ? path.replace(/^~/, homedir()) : resolve(path);
-    const existing = ctx.sessions.get(ctx.chatId);
+    const existing = ctx.sessions.get(ctx.chatId, ctx.bot.name);
     if (existing) {
-      await ctx.sessions.setCwd(ctx.chatId, cwd, reset);
+      await ctx.sessions.setCwd(ctx.chatId, ctx.bot.name, cwd, reset);
     } else {
       await ctx.sessions.upsert(ctx.chatId, {
         backend: ctx.bot.backend.type,

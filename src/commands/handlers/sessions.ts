@@ -6,7 +6,7 @@ export const sessionsHandler: CommandHandler = {
   description: 'list all chat sessions on this bot (admin)',
   adminOnly: true,
   async run(ctx) {
-    const all = ctx.sessions.list().filter((s) => s.session.bot === ctx.bot.name);
+    const all = ctx.sessions.list().filter((e) => e.botName === ctx.bot.name);
     if (all.length === 0) {
       await ctx.reply('no sessions');
       return;

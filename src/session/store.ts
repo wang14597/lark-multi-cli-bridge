@@ -2,49 +2,52 @@
 import { readJsonOrDefault, writeJsonAtomic } from '../util/atomic-file.js';
 import type { ChatSession, SessionsFile } from './types.js';
 
+/**
+ * SessionStore is scoped per (chatId, botName). A chat used by multiple
+ * bots over time keeps each bot's sessionId / cwd in its own slot so that
+ * a chat between claude-bot and codex-bot in the same group doesn't make
+ * them step on each other's continuation IDs (which live in disjoint
+ * namespaces — a claude UUID is not a valid codex thread_id and vice
+ * versa).
+ */
 export class SessionStore {
   private data: SessionsFile = { chats: {} };
   constructor(private filePath: string) {}
 
   async load(): Promise<void> {
-    this.data = await readJsonOrDefault<SessionsFile>(this.filePath, { chats: {} });
+    const raw = await readJsonOrDefault<unknown>(this.filePath, { chats: {} });
+    this.data = migrateIfNeeded(raw);
+    // Persist immediately if the on-disk file was legacy v1 — that way the
+    // next load() is a no-op and ops tooling sees the new shape.
+    if (raw !== this.data && Object.keys(this.data.chats).length > 0) {
+      await this.persist();
+    }
   }
 
-  get(chatId: string): ChatSession | undefined {
-    return this.data.chats[chatId];
+  get(chatId: string, botName: string): ChatSession | undefined {
+    return this.data.chats[chatId]?.[botName];
   }
 
   /**
-   * Like {@link get} but returns the session ONLY if it was last written by
-   * the given bot. Use this anywhere the result will be fed back to an LLM
-   * (sessionId, cwd that affects continuation).
-   *
-   * SessionStore is keyed by chat_id alone, but the same chat can be served
-   * by multiple bots over time — different backends use disjoint sessionId
-   * namespaces (claude's UUID is not a valid codex thread_id and vice
-   * versa), and even within one backend two bots may have different lark
-   * identities / cwds / system prompts. Passing the prior owner's session
-   * to a different bot leads to "no rollout found" (codex), keychain
-   * mismatches, or worse — silently inheriting the wrong conversation.
-   *
-   * If the entry exists but belongs to another bot, the caller should treat
-   * the chat as having no session and let the LLM mint a fresh one;
-   * onSessionUpdate will then overwrite the stale entry.
+   * Flatten the 2D map into a list. Each entry pairs (chatId, botName)
+   * with its session. Used by /sessions to render per-bot listings.
    */
-  getForBot(chatId: string, botName: string): ChatSession | undefined {
-    const existing = this.data.chats[chatId];
-    return existing && existing.bot === botName ? existing : undefined;
-  }
-
-  list(): Array<{ chatId: string; session: ChatSession }> {
-    return Object.entries(this.data.chats).map(([chatId, session]) => ({ chatId, session }));
+  list(): Array<{ chatId: string; botName: string; session: ChatSession }> {
+    const out: Array<{ chatId: string; botName: string; session: ChatSession }> = [];
+    for (const [chatId, byBot] of Object.entries(this.data.chats)) {
+      for (const [botName, session] of Object.entries(byBot)) {
+        out.push({ chatId, botName, session });
+      }
+    }
+    return out;
   }
 
   async upsert(
     chatId: string,
     patch: Partial<ChatSession> & Pick<ChatSession, 'backend' | 'bot' | 'cwd'>,
   ): Promise<ChatSession> {
-    const existing = this.data.chats[chatId];
+    const chatSlot = (this.data.chats[chatId] ??= {});
+    const existing = chatSlot[patch.bot];
     const sessionId = patch.sessionId ?? existing?.sessionId;
     const next: ChatSession = {
       backend: patch.backend,
@@ -54,27 +57,43 @@ export class SessionStore {
       lastUsedAt: new Date().toISOString(),
       messageCount: (existing?.messageCount ?? 0) + 1,
     };
-    this.data.chats[chatId] = next;
+    chatSlot[patch.bot] = next;
     await this.persist();
     return next;
   }
 
-  async reset(chatId: string): Promise<void> {
-    const existing = this.data.chats[chatId];
+  async reset(chatId: string, botName: string): Promise<void> {
+    const existing = this.data.chats[chatId]?.[botName];
     if (!existing) return;
     const { sessionId: _sessionId, ...rest } = existing;
-    this.data.chats[chatId] = { ...rest, lastUsedAt: new Date().toISOString() };
+    this.data.chats[chatId]![botName] = {
+      ...rest,
+      lastUsedAt: new Date().toISOString(),
+    };
     await this.persist();
   }
 
-  async setCwd(chatId: string, cwd: string, resetSession: boolean): Promise<void> {
-    const existing = this.data.chats[chatId];
-    if (!existing) throw new Error(`chat not initialized: ${chatId}`);
+  async setCwd(
+    chatId: string,
+    botName: string,
+    cwd: string,
+    resetSession: boolean,
+  ): Promise<void> {
+    const existing = this.data.chats[chatId]?.[botName];
+    if (!existing) throw new Error(`chat not initialized: ${chatId} / ${botName}`);
     if (resetSession) {
       const { sessionId: _sessionId, ...rest } = existing;
-      this.data.chats[chatId] = { ...rest, cwd, lastUsedAt: new Date().toISOString() };
+      this.data.chats[chatId]![botName] = {
+        ...rest,
+        cwd,
+        lastUsedAt: new Date().toISOString(),
+      };
     } else {
-      this.data.chats[chatId] = { ...existing, cwd, lastUsedAt: new Date().toISOString() };
+      this.data.chats[chatId]![botName] = {
+        ...existing,
+        cwd,
+        lastUsedAt: new Date().toISOString(),
+      };
     }
     await this.persist();
   }
@@ -82,4 +101,33 @@ export class SessionStore {
   private async persist(): Promise<void> {
     await writeJsonAtomic(this.filePath, this.data);
   }
+}
+
+/**
+ * Migrate legacy v1 schema in-place. v1 stored `chats[chatId]` directly
+ * as a ChatSession; v2 nests `chats[chatId][botName]`. Detection looks at
+ * whether the value has a top-level `backend` field (v1 marker — v2 slot
+ * values are bot-name dicts where the *children* carry `backend`).
+ *
+ * Returns the input unchanged when it's already v2 or a plain empty file.
+ */
+function migrateIfNeeded(raw: unknown): SessionsFile {
+  if (!raw || typeof raw !== 'object') return { chats: {} };
+  const r = raw as { chats?: Record<string, unknown> };
+  if (!r.chats || typeof r.chats !== 'object') return { chats: {} };
+
+  // Detect: peek at any value. If it has a `backend` string property, it's
+  // a v1 ChatSession; otherwise it's already a botName → ChatSession dict.
+  const sampleVal = Object.values(r.chats).find((v) => v && typeof v === 'object');
+  if (!sampleVal) return { chats: {} };
+  const isV1 = 'backend' in (sampleVal as object);
+  if (!isV1) return r as SessionsFile;
+
+  const migrated: SessionsFile = { chats: {} };
+  for (const [chatId, session] of Object.entries(r.chats)) {
+    const s = session as ChatSession;
+    if (!s.bot) continue; // skip malformed
+    migrated.chats[chatId] = { [s.bot]: s };
+  }
+  return migrated;
 }

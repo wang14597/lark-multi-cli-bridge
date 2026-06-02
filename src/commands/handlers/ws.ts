@@ -10,7 +10,7 @@ export const wsHandler: CommandHandler = {
     switch (sub) {
       case 'save': {
         if (!name) return ctx.reply('usage: /ws save <name>');
-        const s = ctx.sessions.get(ctx.chatId);
+        const s = ctx.sessions.get(ctx.chatId, ctx.bot.name);
         if (!s) return ctx.reply('no session yet - use /cd first');
         await ctx.workspaces.save(name, s.cwd);
         return ctx.reply(`saved workspace ${name} -> ${s.cwd}`);
@@ -19,8 +19,8 @@ export const wsHandler: CommandHandler = {
         if (!name) return ctx.reply('usage: /ws use <name>');
         const path = ctx.workspaces.resolve(name);
         if (!path) return ctx.reply(`unknown workspace: ${name}`);
-        const existing = ctx.sessions.get(ctx.chatId);
-        if (existing) await ctx.sessions.setCwd(ctx.chatId, path, true);
+        const existing = ctx.sessions.get(ctx.chatId, ctx.bot.name);
+        if (existing) await ctx.sessions.setCwd(ctx.chatId, ctx.bot.name, path, true);
         else
           await ctx.sessions.upsert(ctx.chatId, {
             backend: ctx.bot.backend.type,
@@ -30,7 +30,7 @@ export const wsHandler: CommandHandler = {
         return ctx.reply(`switched to ${name} (${path}); session reset`);
       }
       case 'list': {
-        const s = ctx.sessions.get(ctx.chatId);
+        const s = ctx.sessions.get(ctx.chatId, ctx.bot.name);
         const current = s?.cwd;
         const named = Object.fromEntries(ctx.workspaces.list().map((w) => [w.name, w.path]));
 

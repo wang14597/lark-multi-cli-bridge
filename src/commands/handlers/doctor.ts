@@ -8,7 +8,7 @@ export function makeDoctorHandler(adapter: Adapter): CommandHandler {
     description: 'check CLI version, network, and recent errors',
     async run(ctx) {
       const pf = await adapter.preflight();
-      const sess = ctx.sessions.get(ctx.chatId);
+      const sess = ctx.sessions.get(ctx.chatId, ctx.bot.name);
       const lines = [
         `bot:          ${ctx.bot.name}`,
         `backend:      ${ctx.bot.backend.type}`,
