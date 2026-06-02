@@ -1,0 +1,5 @@
+{"type":"init","timestamp":"2026-06-02T09:14:16.040Z","session_id":"fea5b742-eeb8-42a0-9eb9-6408b240f22b","model":"gemini-3-flash-preview"}
+{"type":"message","timestamp":"2026-06-02T09:14:16.042Z","role":"user","content":"count: 1 2 3"}
+{"type":"message","timestamp":"2026-06-02T09:14:22.335Z","role":"assistant","content":"4 5 6","delta":true}
+{"type":"message","timestamp":"2026-06-02T09:14:22.531Z","role":"assistant","content":" 7 8 9","delta":true}
+{"type":"result","timestamp":"2026-06-02T09:14:22.588Z","status":"success","stats":{"total_tokens":13507,"input_tokens":12826,"output_tokens":51,"cached":0,"input":12826,"duration_ms":6548,"tool_calls":0}}
