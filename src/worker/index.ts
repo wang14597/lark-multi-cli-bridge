@@ -13,6 +13,7 @@ import { LarkCardSink } from './lark-sink.js';
 import { Dispatcher } from './dispatcher.js';
 import { buildBridgeContext } from './bridge-context.js';
 import { downloadAttachment } from '../lark/attachment.js';
+import { fetchQuotedContext, asMessageGetClient } from '../lark/fetch-quote.js';
 import type { IngressMessage } from '../lark/types.js';
 import { WorkspaceStore } from '../session/workspace.js';
 import { CommandRouter } from '../commands/router.js';
@@ -196,6 +197,27 @@ export async function runWorker(botName: string): Promise<void> {
       replyCard,
     });
     if (handled) return;
+
+    // Reply-quote: resolve the quoted parent (if any) before stashing the
+    // ingress for prompt assembly. Best-effort — if the SDK call fails the
+    // user's message still flows through, just without the <quoted_message>
+    // block. The asMessageGetClient cast narrows the full SDK Client down to
+    // the slice fetch-quote actually depends on.
+    if (msg.parentMessageId) {
+      const quoted = await fetchQuotedContext(asMessageGetClient(client), msg.parentMessageId);
+      if (quoted) {
+        msg.quoted = quoted;
+        log.info(
+          { chatId: msg.chatId, parentId: msg.parentMessageId, type: quoted.type },
+          'quoted parent resolved',
+        );
+      } else {
+        log.warn(
+          { chatId: msg.chatId, parentId: msg.parentMessageId },
+          'quoted parent fetch returned no content',
+        );
+      }
+    }
 
     lastIngressByChat.set(msg.chatId, msg);
 
