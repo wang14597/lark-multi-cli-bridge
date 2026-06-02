@@ -1,6 +1,6 @@
 {
   "name": "lark-multi-cli-bridge",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Lark/Feishu bridge that routes messages to Claude / Codex / Gemini CLIs, one bot per backend.",
   "type": "module",
   "license": "MIT",

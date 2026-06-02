@@ -4,7 +4,7 @@
 
 English: [CHANGELOG.md](CHANGELOG.md)
 
-## [未发布]
+## [v0.7.1] - 2026-06-02
 
 ### 修复
 

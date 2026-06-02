@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file. Format insp
 
 中文版: [CHANGELOG.zh.md](CHANGELOG.zh.md)
 
-## [Unreleased]
+## [v0.7.1] - 2026-06-02
 
 ### Fixed
 
