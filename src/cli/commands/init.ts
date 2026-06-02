@@ -354,7 +354,11 @@ export async function initCommand(): Promise<void> {
     const ans = (await rl.question('Add another bot? [Y/n]: ')).trim().toLowerCase();
     rl.close();
     if (ans === 'n' || ans === 'no') {
-      console.log('Nothing to do.');
+      // Still give existing-bot users a chance to install agent skills —
+      // they may have created bots before v0.7 (when the skill prompt was
+      // introduced). Already-installed users get a silent "Skipping" line.
+      await maybeInstallSkills();
+      console.log('\nNothing else to do.');
       return;
     }
   }
