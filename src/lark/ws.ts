@@ -51,7 +51,17 @@ export class LarkWsClient extends EventEmitter {
         // worker to route to dispatcher.abort() or other handlers.
         // Return an empty object so Lark doesn't display a "card error" badge.
         const parsed = parseCardActionEvent(data);
-        if (parsed) this.emit('card-action', parsed satisfies CardActionEvent);
+        if (parsed) {
+          this.emit('card-action', parsed satisfies CardActionEvent);
+        } else {
+          // Defense in depth: never silently drop a button click. If the
+          // parser can't recover required IDs from the payload, surface the
+          // raw shape so a future Lark schema bump shows up as a warn line
+          // instead of a dead button. This was the failure mode that
+          // briefly bricked the ⏹ stop button on CardKit 2.0 (IDs moved
+          // into event.context.*).
+          this.opts.logger?.warn('[ws] card.action.trigger unparseable, dropping', data);
+        }
         return {};
       },
     });

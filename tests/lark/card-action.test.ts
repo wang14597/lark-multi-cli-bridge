@@ -38,6 +38,51 @@ describe('parseCardActionEvent', () => {
   });
 });
 
+describe('parseCardActionEvent — schema 2.0 cards (context-nested IDs)', () => {
+  // Real Lark `card.action.trigger` events for CardKit 2.0 cards (which is
+  // what we render — schema: "2.0" in card-builder.ts) put open_chat_id and
+  // open_message_id INSIDE `context`, not at the top level. The SDK flattens
+  // the outer `event` wrapper but leaves `context` nested. Missing this path
+  // is what made the ⏹ stop button silently fail in production — parser
+  // returned undefined, ws.ts `if (parsed) emit` swallowed it, dispatcher
+  // was never aborted. See SDK's own normalizeCardAction in node-sdk for
+  // the reference fallback chain.
+  it('extracts IDs from event.context when top-level absent (schema 2.0 shape)', () => {
+    const raw = {
+      // No top-level open_chat_id / open_message_id — they're nested.
+      operator: { open_id: 'ou_user', tenant_key: 'tk' },
+      action: { tag: 'button', value: { cmd: 'stop' } },
+      context: {
+        open_chat_id: 'oc_schema_v2',
+        open_message_id: 'om_schema_v2',
+      },
+      host: 'im_message',
+      delivery_type: 'lark_oapi_card_v2',
+    };
+    const parsed = parseCardActionEvent(raw);
+    expect(parsed).toMatchObject({
+      chatId: 'oc_schema_v2',
+      messageId: 'om_schema_v2',
+      operatorOpenId: 'ou_user',
+      cmd: 'stop',
+      value: { cmd: 'stop' },
+    });
+  });
+
+  it('prefers top-level IDs over context when both are present (legacy compat)', () => {
+    const raw = {
+      operator: { open_id: 'ou_user' },
+      open_chat_id: 'oc_top_wins',
+      open_message_id: 'om_top_wins',
+      context: { open_chat_id: 'oc_nested', open_message_id: 'om_nested' },
+      action: { value: { cmd: 'stop' } },
+    };
+    const parsed = parseCardActionEvent(raw);
+    expect(parsed?.chatId).toBe('oc_top_wins');
+    expect(parsed?.messageId).toBe('om_top_wins');
+  });
+});
+
 describe('parseCardActionEvent — __claude_cb buttons (no cmd)', () => {
   it('parses a button whose value has only __claude_cb (no cmd)', () => {
     const raw = {
