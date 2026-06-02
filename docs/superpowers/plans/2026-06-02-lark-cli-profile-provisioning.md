@@ -661,7 +661,7 @@ Replace with:
   const shimDir = paths.shimsDir(bot.name);
   const realLarkCliPath = resolveRealLarkCli(
     process.env.LMCB_LARK_CLI_PATH ?? (await which('lark-cli')),
-    join(homedir(), '.lark-multi-cli-bridge', 'shims'),
+    paths.shimsRoot,
   );
   const runLarkCli = makeRunLarkCli(realLarkCliPath);
   await ensureLarkProfile(bot, {
@@ -684,16 +684,17 @@ Replace with:
 
 ```ts
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import {
   ensureLarkProfile,
   provisionLarkShim,
   resolveRealLarkCli,
   makeRunLarkCli,
+  which,
 } from '../lark/lark-cli-provision.js';
 ```
 
-(`homedir` is already imported at the top of the file. `paths` is already imported.)
+(`paths` is already imported. Do NOT recompute the shims root with `homedir()` —
+use `paths.shimsRoot` so the path honors `LMCB_HOME` for tests / sandboxed runs.)
 
 - [ ] **Step 4: Add a `which()` helper**
 
