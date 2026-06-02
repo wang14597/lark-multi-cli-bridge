@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file. Format insp
 
 中文版: [CHANGELOG.zh.md](CHANGELOG.zh.md)
 
+## [Unreleased]
+
+### Added
+
+- **First card per turn is now a Lark quote-reply against the user's message.** Sent via `im.message.reply` with the user's `message_id` as the anchor, so the card renders under a `回复 <user>:` header and the original message gets a `N 条回复` badge — much clearer attribution in busy group chats. Synthetic events (`__claude_cb` card-button callbacks) still send top-level since they have no real user message to anchor to.
+- **Gemini 0.44 stream-json adapter** with incremental text streaming, tool-call/result rendering, and UUID-based session resume. Drop-in upgrade from the prior fresh-only adapter: gemini bots now stream output chunk-by-chunk into the card, surface tool calls (`✅ list_directory — ...`), and remember conversation context across turns on par with claude / codex bots.
+
+### Changed
+
+- **SessionStore is now scoped per (chatId, botName)** instead of per chat. A chat served by multiple bots (e.g. `claude-bot` + `codex-bot` in the same group) keeps an independent `sessionId` / `cwd` slot for each bot. Legacy v1 files (`chats[chatId]` = ChatSession) are auto-migrated to v2 (`chats[chatId][botName]` = ChatSession) on first `load()` and persisted, no manual cleanup required. The store API now takes a `botName` parameter — `get(chatId, botName)` / `reset(chatId, botName)` / `setCwd(chatId, botName, cwd, reset)` — and `list()` returns flattened `{chatId, botName, session}` entries.
+- **Lark SDK errors render in full instead of truncated to `[Object]` / `[Array]`.** A new `adaptLarkLogger(pinoLogger)` adapter routes SDK log lines through pino with `util.inspect({depth: 10})`, so nested API error payloads (`field_violations`, `config`, `response.data`) land in the worker log with full structure. The worker wires this into both `Lark.Client` and `Lark.WSClient`.
+
+### Fixed
+
+- **Cross-bot session bleed (root cause)**: a `claude-bot` session UUID was being passed to codex's `exec resume`, which then bailed with `thread/resume: no rollout found for thread id <id>`. The chat was effectively bricked for the second bot until `/new`. The per-(chatId, botName) SessionStore scoping above eliminates this at the source — `claude-bot`'s UUID is never visible to `codex-bot` even when they share a chat.
+- **Gemini CLI 0.42+ arg compatibility**: `--prompt-interactive=false` was being parsed by 0.42 yargs as "set `-i` to value 'false'", colliding with `-p` (`Cannot use both --prompt and --prompt-interactive together`). `--chat-id` was removed entirely in favour of `--resume`. Both flags are dropped from the adapter.
+- **Gemini agent-loop tool events no longer freeze the card on `🧠 正在思考`.** The initial 0.44 parser only handled `init` / `message` / `result`, but gemini-cli is agentic by default and emits `tool_use` / `tool_result` lines around every internal tool call (`list_directory`, `google_web_search`, etc.). Parser now maps `tool_use → tool-call` and `tool_result → tool-result` so the card streamer renders the agent loop in real time.
+
+### Internal
+
+- New `src/lark/sdk-logger.ts` — Lark SDK `Logger` interface implementation that proxies to pino with full-depth inspect.
+- New exported `parseGeminiJsonLine` in `src/adapters/gemini.ts` alongside the adapter (independently unit-tested).
+- New test fixtures: `tests/adapters/__fixtures__/gemini/stream-json-{simple,tools}.jsonl`, plus `tests/worker/lark-sink.test.ts` covering both reply and top-level `im.message.create` branches.
+
 ## [v0.7.1] - 2026-06-02
 
 ### Fixed

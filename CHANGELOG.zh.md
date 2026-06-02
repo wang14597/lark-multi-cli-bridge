@@ -4,6 +4,30 @@
 
 English: [CHANGELOG.md](CHANGELOG.md)
 
+## [未发布]
+
+### 新增
+
+- **每轮第一张卡片现在以「引用回复」形式回复用户消息。** 通过 `im.message.reply` 以用户的 `message_id` 作 anchor 发送，卡片渲染在 `回复 <user>:` 引用块下方，原消息出现 `N 条回复` 角标——群聊中更清楚卡片回应的是哪条消息。合成事件（`__claude_cb` 卡片按钮回调）仍走普通发送，因为它们没有真实用户消息可以 anchor。
+- **Gemini 0.44 stream-json 适配器**，支持增量文本流、tool-call/result 渲染、UUID-based session 续接。从此前的「每次 fresh」适配器无缝升级：gemini bot 现在能逐 chunk 流式输出到卡片、显示工具调用（`✅ list_directory — ...`）、跨消息保留对话上下文，与 claude / codex bot 同等体验。
+
+### 变更
+
+- **SessionStore 现在按 (chatId, botName) 二维存储**，不再仅按 chat。同一个聊天若被多个 bot 服务（如群内同时有 `claude-bot` + `codex-bot`），每个 bot 各自独立维护 `sessionId` / `cwd`。旧版 v1 文件（`chats[chatId]` = ChatSession）在第一次 `load()` 时自动迁移为 v2（`chats[chatId][botName]` = ChatSession）并写回，无需手动清理。Store API 现在接受 `botName` 参数——`get(chatId, botName)` / `reset(chatId, botName)` / `setCwd(chatId, botName, cwd, reset)`；`list()` 返回扁平化的 `{chatId, botName, session}` 数组。
+- **Lark SDK 错误日志完整展开，不再被截断为 `[Object]` / `[Array]`。** 新增 `adaptLarkLogger(pinoLogger)` 适配器，把 SDK 日志通过 pino 输出，使用 `util.inspect({depth: 10})` 序列化，嵌套的 API 错误结构（`field_violations`、`config`、`response.data`）完整落入 worker 日志。worker 把这个 logger 同时注入 `Lark.Client` 与 `Lark.WSClient`。
+
+### 修复
+
+- **跨 bot session 串号（根因修复）**：`claude-bot` 的 session UUID 被传给 codex 的 `exec resume`，导致后者立即报 `thread/resume: no rollout found for thread id <id>`——该聊天对第二个 bot 实际被锁死，必须 `/new` 才能恢复。上述按 (chatId, botName) 隔离的 SessionStore 改造从源头消除了这种串号，`claude-bot` 的 UUID 永远不会被 `codex-bot` 看到，即使两者共用一个聊天。
+- **Gemini CLI 0.42+ 参数兼容**：`--prompt-interactive=false` 被 0.42 yargs 解析为「设置 `-i` 为 'false'」，与 `-p` 冲突报错 `Cannot use both --prompt and --prompt-interactive together`；`--chat-id` 在 0.42 已完全移除（由 `--resume` 替代）。两个 flag 都已从适配器中删除。
+- **Gemini agent-loop 的工具事件不再让卡片卡死在 `🧠 正在思考`。** 初版 0.44 parser 只处理 `init` / `message` / `result`，但 gemini-cli 默认是 agentic 的，每次内部工具调用（`list_directory`、`google_web_search` 等）都会发 `tool_use` / `tool_result` 行。Parser 现在把 `tool_use → tool-call`、`tool_result → tool-result` 映射出来，卡片流就能实时渲染整个 agent loop。
+
+### 内部
+
+- 新增 `src/lark/sdk-logger.ts` —— 实现 Lark SDK `Logger` 接口，转发到 pino 并完整展开对象。
+- 在 `src/adapters/gemini.ts` 中新增导出 `parseGeminiJsonLine`，与适配器并列（可独立单测）。
+- 新增测试 fixture：`tests/adapters/__fixtures__/gemini/stream-json-{simple,tools}.jsonl`，以及 `tests/worker/lark-sink.test.ts`（同时覆盖 reply 与顶层 `im.message.create` 两条分支）。
+
 ## [v0.7.1] - 2026-06-02
 
 ### 修复
