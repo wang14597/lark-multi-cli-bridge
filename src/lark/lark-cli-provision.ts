@@ -66,8 +66,10 @@ export async function provisionLarkShim(
   realLarkCliPath: string,
   deps: Pick<ProvisionDeps, 'writeFile' | 'mkdirp'>,
 ): Promise<string> {
-  if (realLarkCliPath.includes('"') || realLarkCliPath.includes('\n')) {
-    throw new Error(`unsafe lark-cli path (contains quote or newline): ${realLarkCliPath}`);
+  if (realLarkCliPath.includes("'") || realLarkCliPath.includes('\n')) {
+    throw new Error(
+      `unsafe lark-cli path (contains single-quote or newline): ${realLarkCliPath}`,
+    );
   }
   // app_id is constrained to [a-z0-9_] by Lark's open platform, but be paranoid.
   if (!/^[A-Za-z0-9_-]+$/.test(bot.lark.app_id)) {
@@ -79,7 +81,7 @@ export async function provisionLarkShim(
     `#!/usr/bin/env bash\n` +
     `# lmcb-managed shim for bot ${bot.name} — DO NOT EDIT.\n` +
     `# Hard-pins --profile so the LLM never falls through to the default profile.\n` +
-    `exec "${realLarkCliPath}" --profile "${bot.lark.app_id}" "$@"\n`;
+    `exec '${realLarkCliPath}' --profile '${bot.lark.app_id}' "$@"\n`;
   await deps.writeFile(shimPath, content, 0o755);
   return shimPath;
 }

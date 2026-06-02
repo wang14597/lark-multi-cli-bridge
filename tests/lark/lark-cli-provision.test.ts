@@ -141,16 +141,21 @@ describe('provisionLarkShim', () => {
     expect(writes[0]!.path).toBe('/tmp/shims/claude-bot/lark-cli');
     expect(writes[0]!.content).toContain('#!/usr/bin/env bash');
     expect(writes[0]!.content).toContain(
-      'exec "/usr/local/bin/lark-cli" --profile "cli_aa96561a57b81ed1" "$@"',
+      `exec '/usr/local/bin/lark-cli' --profile 'cli_aa96561a57b81ed1' "$@"`,
+    );
+    // Pin call order: mkdirp must run before writeFile, otherwise writeFile
+    // would ENOENT in the real world even though vi.fn() spies don't enforce it.
+    expect(mkdirp.mock.invocationCallOrder[0]!).toBeLessThan(
+      writeFile.mock.invocationCallOrder[0]!,
     );
   });
 
-  it('rejects realLarkCliPath that contains a double-quote (shim injection guard)', async () => {
+  it('rejects realLarkCliPath that contains a single-quote (shim injection guard)', async () => {
     await expect(
       provisionLarkShim(
         bot,
         '/tmp/shims/x',
-        '/usr/local/bin/lark"; rm -rf /; "cli',
+        "/usr/local/bin/lark'; rm -rf /; 'cli",
         { writeFile: vi.fn(), mkdirp: vi.fn() },
       ),
     ).rejects.toThrow(/unsafe lark-cli path/);
