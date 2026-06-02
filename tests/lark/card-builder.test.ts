@@ -34,15 +34,69 @@ describe('renderRunCard', () => {
     expect(JSON.stringify(card)).toContain('context length exceeded');
   });
 
-  it('collapses 3+ tool calls into a summary panel', () => {
+  it('renders done tools as a single markdown list block, no per-tool panel', () => {
     const s = createRunState();
     addTool(s, { id: 't1', name: 'Read', input: { file_path: 'a.ts' } });
     finishTool(s, 't1', 'done');
     addTool(s, { id: 't2', name: 'Write', input: { file_path: 'b.ts' } });
     finishTool(s, 't2', 'done');
     addTool(s, { id: 't3', name: 'Bash', input: { command: 'ls' } });
-    const json = JSON.stringify(renderRunCard(s));
-    expect(json).toContain('个工具调用');
+    finishTool(s, 't3', 'done');
+    finalize(s, { kind: 'done' });
+    const card = renderRunCard(s) as Record<string, unknown>;
+    const body = card['body'] as Record<string, unknown>;
+    const elements = body['elements'] as Array<Record<string, unknown>>;
+    const toolElements = elements.filter(
+      (e) =>
+        e['tag'] === 'markdown' &&
+        typeof e['content'] === 'string' &&
+        (e['content'] as string).includes('**Read**'),
+    );
+    expect(toolElements).toHaveLength(1);
+    const content = toolElements[0]!['content'] as string;
+    expect(content).toContain('- ✅ **Read**');
+    expect(content).toContain('- ✅ **Write**');
+    expect(content).toContain('- ✅ **Bash**');
+    // No collapsible_panel for done tools
+    expect(elements.some((e) => e['tag'] === 'collapsible_panel')).toBe(false);
+  });
+
+  it('error tool keeps its own red panel even mixed with done list lines', () => {
+    const s = createRunState();
+    addTool(s, { id: 't1', name: 'Read', input: { file_path: 'a.ts' } });
+    finishTool(s, 't1', 'done');
+    addTool(s, { id: 't2', name: 'Bash', input: { command: 'pnpm test' } });
+    finishTool(s, 't2', 'error', 'AssertionError');
+    addTool(s, { id: 't3', name: 'Write', input: { file_path: 'b.ts' } });
+    finishTool(s, 't3', 'done');
+    finalize(s, { kind: 'done' });
+    const card = renderRunCard(s) as Record<string, unknown>;
+    const body = card['body'] as Record<string, unknown>;
+    const elements = body['elements'] as Array<Record<string, unknown>>;
+    const panels = elements.filter((e) => e['tag'] === 'collapsible_panel');
+    expect(panels).toHaveLength(1);
+    const panelStr = JSON.stringify(panels[0]);
+    expect(panelStr).toContain('AssertionError');
+    expect(panelStr).toContain('"red"');
+  });
+
+  it('last running tool keeps a live panel while siblings before it are list lines', () => {
+    const s = createRunState();
+    addTool(s, { id: 't1', name: 'Read', input: { file_path: 'a.ts' } });
+    finishTool(s, 't1', 'done');
+    addTool(s, { id: 't2', name: 'Bash', input: { command: 'pnpm build' } });
+    // t2 still running, terminal still 'running'
+    const card = renderRunCard(s) as Record<string, unknown>;
+    const body = card['body'] as Record<string, unknown>;
+    const elements = body['elements'] as Array<Record<string, unknown>>;
+    const panels = elements.filter((e) => e['tag'] === 'collapsible_panel');
+    expect(panels).toHaveLength(1);
+    expect(JSON.stringify(panels[0])).toContain('pnpm build');
+    const listMd = elements.find(
+      (e) => e['tag'] === 'markdown' && (e['content'] as string)?.includes('**Read**'),
+    );
+    expect(listMd).toBeDefined();
+    expect(listMd!['content']).toContain('- ✅ **Read**');
   });
 
   it('streaming_mode is false in terminal state', () => {

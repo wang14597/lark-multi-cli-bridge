@@ -3,7 +3,6 @@ import type { Block, FooterStatus, RunState, ToolEntry } from './run-state.js';
 import { toolBodyMd, toolHeaderText } from './tool-render.js';
 
 const REASONING_MAX = 1500;
-const COLLAPSE_TOOL_THRESHOLD = 3;
 
 interface ToolGroup {
   kind: 'tools';
@@ -74,20 +73,42 @@ function* groupBlocks(blocks: Block[]): Generator<Group> {
   if (toolBuf.length > 0) yield { kind: 'tools', tools: toolBuf };
 }
 
+/**
+ * Render a group of consecutive tool calls.
+ *
+ * Default posture is a single markdown list (one line per tool) so the card
+ * stays visually light. Two exceptions promote a tool back into its own
+ * collapsible panel so the user can see actionable context without leaving
+ * Lark:
+ *   - `status === 'error'` → red-bordered panel, body expanded
+ *   - the last tool while the run is still in flight → grey panel with live
+ *     "running…" body
+ *
+ * Lines and panels can interleave within a single group; lineBuf is flushed
+ * as a single markdown element each time a panel-worthy tool is encountered
+ * so list ordering matches event order.
+ */
 function renderToolGroup(tools: ToolEntry[], finalized: boolean): object[] {
   if (tools.length === 0) return [];
-  if (tools.length < COLLAPSE_TOOL_THRESHOLD) {
-    return tools.map((t) => toolPanel(t, false));
-  }
-  if (finalized) {
-    return [collapsedToolSummary(tools, true)];
-  }
-  // Running: collapse prior tools, keep latest visible.
-  const prior = tools.slice(0, -1);
-  const latest = tools[tools.length - 1];
   const out: object[] = [];
-  if (prior.length > 0) out.push(collapsedToolSummary(prior, false));
-  if (latest) out.push(toolPanel(latest, true));
+  const lineBuf: string[] = [];
+  const flushLines = (): void => {
+    if (lineBuf.length === 0) return;
+    out.push(markdown(lineBuf.join('\n')));
+    lineBuf.length = 0;
+  };
+
+  const lastIndex = tools.length - 1;
+  tools.forEach((tool, i) => {
+    const isLastRunning = !finalized && i === lastIndex && tool.status === 'running';
+    if (tool.status === 'error' || isLastRunning) {
+      flushLines();
+      out.push(toolPanel(tool, true));
+    } else {
+      lineBuf.push(`- ${toolHeaderText(tool)}`);
+    }
+  });
+  flushLines();
   return out;
 }
 
@@ -108,32 +129,6 @@ function toolPanel(tool: ToolEntry, expanded: boolean): object {
     border: tool.status === 'error' ? 'red' : 'grey',
     body: toolBodyMd(tool) || '_无输出_',
   });
-}
-
-/**
- * Render N tool calls as a single collapsed panel. Body content is dropped
- * — only the per-tool header line (icon + name + short summary) is kept.
- *
- * With full input/output panels nested, the serialized JSON can easily exceed
- * Feishu's per-element size limit (~30KB), causing 400 errors that abort the
- * entire card stream. Tool details are still in the file log.
- *
- * The latest-running tool, when applicable, is rendered separately via
- * toolPanel(latest, true) so live observation isn't sacrificed.
- */
-function collapsedToolSummary(tools: ToolEntry[], finalized: boolean): object {
-  const suffix = finalized ? '（已结束）' : '';
-  const title = `☕ **${tools.length} 个工具调用${suffix}**`;
-  const headerList = tools.map((t) => `- ${toolHeaderText(t)}`).join('\n');
-  return {
-    tag: 'collapsible_panel',
-    expanded: false,
-    header: panelHeader(title),
-    border: { color: 'blue', corner_radius: '5px' },
-    vertical_spacing: '8px',
-    padding: '8px 8px 8px 8px',
-    elements: [{ tag: 'markdown', content: headerList, text_size: 'notation' }],
-  };
 }
 
 interface PanelOpts {

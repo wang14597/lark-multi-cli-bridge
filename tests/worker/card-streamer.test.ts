@@ -91,10 +91,11 @@ describe('CardStreamer (new RunState-driven)', () => {
     vi.useRealTimers();
   });
 
-  it('tool result output is rendered in the card body (not "无输出")', async () => {
-    // Regression for the Skill 无输出 bug: when the adapter passes a real
-    // output string to onToolResult, the finalized card must render it
-    // instead of falling back to the placeholder.
+  it('done tool renders as a single list line, never falls back to "无输出"', async () => {
+    // Regression for the Skill 无输出 bug. Under the list-line UI, a done
+    // tool no longer renders its body — but the placeholder must still not
+    // appear (it would only ever come from the error / running-last panel
+    // paths, which a finalized happy-path tool never hits).
     vi.useFakeTimers();
     const sink = fakeSink();
     const streamer = new CardStreamer({ sink, throttleMs: 500, throttleChars: 50 });
@@ -104,7 +105,7 @@ describe('CardStreamer (new RunState-driven)', () => {
     await streamer.onDone({ finalText: '', durationMs: 0 });
     await vi.runAllTimersAsync();
     const allJson = JSON.stringify(sink.sent);
-    expect(allJson).toContain('Launching skill: superpowers:foo');
+    expect(allJson).toContain('- ✅ **Skill** — superpowers:foo');
     expect(allJson).not.toContain('无输出');
     vi.useRealTimers();
   });
