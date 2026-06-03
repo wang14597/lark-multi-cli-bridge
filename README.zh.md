@@ -4,15 +4,16 @@
 
 English: [README.md](README.md)
 
-## 用起来是什么感觉
+## 这能用在哪些场景
 
-你本机已经装好了 `claude` / `codex` / `gemini`。lmcb 把它们包成飞书 bot，让你在手机上随时调度。几个具体场景：
+把多个本机 CLI 包成 bot 拉进同一个飞书群是 lmcb 真正的杀手锏。几个真实场景：
 
-- **堵车里，线上爆了。** 截一张 Sentry 报错图 DM 给 `claude-bot`。claude 在你笔记本上读图、打开出问题的文件、写补丁、流式回到飞书卡片里。
-- **离开工位，想看跑测结果。** DM `codex-bot` "跑下 pnpm test 看哪些挂了"。codex 本地跑，挂掉的用例名一行一行流出来。
-- **群里跟同事一起 triage。** @ 一下 bot，它通过「引用回复」嵌进消息流，群里所有人看着同一个卡片协作。⏹ 按钮可以中途打断。
+- **群里多 bot A2A，互相挑战、互相补盲。** 把 `claude-bot` 和 `codex-bot` 都加进同一个群。问 claude "这段并发代码有啥风险"，拿到答案再 @ codex "你 review 一下 claude 的建议有没有漏掉边缘 case"，两个 bot 在群里互相点评——你只看结论。本质上是 agent-to-agent 协作，平台是飞书群。
+- **人 + 多 bot 联合 triage。** 线上 bug 群里，工程 @ `claude-bot` 让它读截图复现 + 改 fix，QA @ `codex-bot` 跑回归脚本看影响面，PM @ `gemini-bot` 总结时间线和影响用户数。三个 bot 各自在你这台机器上跑，输出全进同一个群，所有人看到的是同一份完整链路。
+- **直接让 bot 在群里做开发。** DM 或群里 @ bot "帮我在 `src/payment.ts` 加一个 stripe webhook handler"。bot 在你本地读代码、加新文件、跑测试，整张 PR 在卡片里流式展开。同事看着觉得某段不对？直接对那张卡片**引用回复**指出来，bot 接着改——多人 review + bot 落地，全程在群里完成。
+- **离开工位也能继续推进。** 想到一个 feature，手机上 DM bot 直接开干。bot 在家里那台笔记本上跑，第二天回工位 `git diff` 直接 review。
 
-CLI 自带的 session id 在消息之间保持不变——claude `--session`、codex `exec resume`、gemini `--resume`——所以多轮上下文自然续上。
+session 续接是自动的——claude `--session`、codex `exec resume`、gemini `--resume`——多轮上下文跟得住。每个 bot 在每个 chat 各有独立 session，群里同时跑多个 bot 不串号。
 
 ## 60 秒上手
 
@@ -52,35 +53,6 @@ node ./bin/lmcb.mjs start --foreground
 - **同 backend 多人格**——`claude-personal-bot` + `claude-team-bot` 走两个不同 Lark 应用，各自独立的访问名单和 cwd。
 - **同聊天多 bot 互不串号**——SessionStore 按 `(chatId, botName)` 二维存储，claude 的 UUID 和 codex 的 thread_id 永远不会交叉传给对方，一个群里可以并行跟多个 agent 对话。
 - **每 bot 独立的 `lark-cli` 身份**——worker 启动时为每个 bot 在 `~/.lark-multi-cli-bridge/shims/<bot>/` 写一个 PATH shim，强制 `lark-cli` 调用带上 `--profile <app_id>`。LLM 子进程随便调 `lark-cli api …`，永远绑到正确 bot 身份，机器上 bot 再多也不会串。
-
-## 运维要点
-
-- **崩溃恢复**——指数退避（1s → 30s）；3 分钟内崩溃 5 次则 worker 被禁用，`lmcb restart <bot>` 重新启用。
-- **macOS launchd 守护进程**——`lmcb daemon install` 开机自启。Linux 支持前台运行，systemd unit 生成延后。
-- **bots 目录热加载**——编辑 `bots/*.yaml` 后 worker 自动重启（500 ms 防抖）。
-- **抢占 + 500 ms 批处理**——快速连发的消息合并为一次 CLI 调用，不会重复 spawn；引用回复 anchor 到 batch 里最新一条。
-- **SDK 错误完整可见**——Lark SDK 错误通过 pino 输出，`util.inspect({depth: 10})` 序列化，嵌套的 API 错误（`field_violations`、`response.data`）完整落到 worker 日志，不再被截断为 `[Object]`。
-- **每 bot 独立访问控制**——按用户或聊天设白名单；app owner 默认是 admin。
-- **状态全在 `~/.lark-multi-cli-bridge/`**——配置、bot YAML、会话（按 (chatId, botName)）、日志、媒体文件、per-bot `lark-cli` shims。
-
-## Agent Skills（推荐）
-
-bridge 自带一个 agent skill `lark-bridge-overlay`，教 LLM 怎么读 bridge
-注入的 `<bridge_context>` / `<quoted_message>` / `<interactive_card>` 块、
-`__claude_cb` 按钮回调约定、以及前台阻塞的 OAuth 流程。
-
-它跟上游 `larksuite/cli` 的 26 个 lark-cli skill（lark-im / lark-base /
-lark-calendar 等）配套使用——上游教 lark-cli 怎么用，我们的 overlay 教
-bridge 里的专属约定。一次装好两层：
-
-```bash
-pnpm skills:install -g -y                       # 全局，免确认
-UPSTREAM_SKILLS='*' pnpm skills:install -g -y   # 装全部 26 个上游 + overlay
-```
-
-默认只装 `lark-im,lark-shared` 这套最小可用集 + 本仓库的 overlay。可以用
-`UPSTREAM_SKILLS=lark-im,lark-base,lark-calendar` 自选上游域。详细参数见
-[README.md#agent-skills-recommended](./README.md#agent-skills-recommended)。
 
 ## 文档
 

@@ -27,7 +27,11 @@ npm link   # makes `lmcb` available everywhere
 
 ## 3. Add your first bot — `lmcb init`
 
-Run the interactive wizard:
+`lmcb init` is an interactive wizard that does three things in one pass:
+
+1. **Creates a PersonalAgent app** under your Lark tenant (60-second QR scan; no developer console required).
+2. Writes the bot's config (`app_id` / `app_secret` / backend / cwd) to `~/.lark-multi-cli-bridge/bots/<name>.yaml`.
+3. Installs **agent skills** that teach the LLM the bridge's protocol — strongly recommended; what happens if you skip is covered in Step 5.
 
 ```bash
 node ./bin/lmcb.mjs init
@@ -35,55 +39,192 @@ node ./bin/lmcb.mjs init
 lmcb init
 ```
 
-The wizard proceeds as follows:
-
-**Step 1 — Pick a backend**
+You'll see:
 
 ```
-? Backend (1=claude, 2=codex, 3=gemini): 1
+lmcb init — interactive bot setup
 ```
 
-**Step 2 — Name your bot**
+### Step 1 — Pick a backend
 
 ```
-? Bot name [claude-bot]:
+— Backend —
+  1. claude
+  2. codex
+  3. gemini
+Pick a backend (1/2/3 or name) [1]:
 ```
 
-Press Enter to accept the default or type a custom name.
+Enter `1` / `2` / `3` or the name. Empty defaults to `claude`. Pick whichever CLI you actually have installed (`which claude` / `which codex` / `which gemini` to check).
 
-**Step 3 — Provisioning method**
-
-```
-? Provisioning method (1=scan QR to create app, 2=paste app_id/secret): 1
-```
-
-Option 1 (default) — QR scan flow:
-- A QR code appears in your terminal.
-- Open Lark / Feishu on your mobile device.
-- Scan the QR code.
-- Lark creates a new internal-use application under your tenant automatically.
-- `app_id` and `app_secret` are returned directly to lmcb — no browser visit needed.
-
-Option 2 — Manual paste:
-- Paste your existing `app_id` and `app_secret` when prompted.
-
-**Step 4 — Confirmation**
-
-After credentials are verified the wizard prints:
+### Step 2 — Name the bot
 
 ```
-✓ App registered: app_id=cli_xxxxxxxx
+Bot name [claude-bot]:
 ```
 
-It then writes `~/.lark-multi-cli-bridge/bots/<name>.yaml` (chmod 600).
+Default is `<backend>-bot`. Press Enter to accept, or type a custom name (must be `lowercase-kebab-case`, e.g. `claude-prod-bot`). If you plan to run multiple bots together in one chat for A2A collaboration, give them distinguishable names (`claude-dev` + `codex-dev` is clearer than `*-bot`).
 
-**Step 5 — Chain more bots**
+### Step 3 — Pick how the app gets created
 
 ```
-? Add another bot? (y/N):
+— Provisioning method —
+  1. Scan a QR code with Lark mobile app to auto-create a new app under your tenant (recommended)
+  2. Paste an existing App ID + App Secret manually
+Pick [1]:
 ```
 
-Type `y` to loop back to step 1 and add a codex or gemini bot in the same session.
+#### Option 1 (recommended) — QR scan, auto-create
+
+Press Enter (or type `1`); the terminal shows:
+
+```
+Starting Lark scan-to-create flow...
+
+Scan this QR code with the Lark mobile app to create a new internal-use application:
+
+  █▀▀▀▀▀█ ▄▀▄▀█ █▀▀▀▀▀█
+  █ ███ █ ▀█▄▀▄ █ ███ █
+  █ ▀▀▀ █ █▀█▀▀ █ ▀▀▀ █
+  ▀▀▀▀▀▀▀ █ █ █ ▀▀▀▀▀▀▀
+  ...(ASCII QR art)...
+
+QR code expires in about 5 minute(s).
+You can also open this URL directly: https://...
+```
+
+Then:
+1. **Open Lark / Feishu on your phone**, tap the scanner, point at the terminal QR.
+2. Lark pops a confirmation page: "lark-multi-cli-bridge wants to create a PersonalAgent app for you." Confirm.
+3. Lark **auto-creates an internal-use application** — default name `lark-multi-cli-bridge`, bound to your tenant. Permissions (`im:message`, `im:resource`, …) are pre-granted, WebSocket is enabled, `im.message.receive_v1` is subscribed.
+4. The moment the app exists, credentials flow back to lmcb:
+
+```
+✓ App registered successfully.
+  App ID:  cli_xxxxxxxxxxxxxxxx
+  Secret:  abcd****
+  Tenant:  lark
+
+Bot "claude-bot" added.
+```
+
+**If the scan fails** — the QR may have expired (5 min), or the confirmation in the Lark app didn't go through (transient network). The terminal asks:
+
+```
+Scan-to-create failed: <error>
+Retry scan (r) or switch to manual entry (m)? [r]:
+```
+
+`r` mints a fresh QR; `m` switches to manual mode (see Option 2).
+
+#### Option 2 — Paste an existing app's credentials
+
+Type `2`. First pick the tenant:
+
+```
+Tenant (lark/feishu) [lark]:
+```
+
+`lark` = international; `feishu` = mainland China. This determines API domains. Then the terminal prints what you need to do in the developer console:
+
+```
+To get an app_id / app_secret:
+  1. Visit https://open.larksuite.com/app    (or https://open.feishu.cn/app for feishu)
+  2. Create a "Custom App for Internal Use"
+  3. Open the app, go to "Credentials & Basic Info" to see App ID + App Secret
+  4. Under "Events & Callbacks" enable WebSocket and subscribe `im.message.receive_v1`
+  5. Under "Permissions" grant `im:message`, `im:message:send_as_bot`, `im:resource`
+  6. Publish a version of the app
+
+Open the developer console in your browser now? [y/N]:
+```
+
+`y` opens the console for you. Once you've completed the six steps there, return to the terminal and paste:
+
+```
+App ID (cli_...): cli_aa9.....................
+App Secret (hidden input): *********************
+```
+
+The secret is hidden as you type (`*` chars only) so it can't leak via screen-record.
+
+When to use Option 2: scan-flow is disabled for your tenant, you want to reuse an app you already configured by hand, or you're running `init` in CI / a headless terminal.
+
+### Step 4 — Write to disk + chain more bots
+
+The bot config is written to `~/.lark-multi-cli-bridge/bots/<name>.yaml`, `chmod 600` (only your user can read). Then:
+
+```
+Add another bot? [y/N]:
+```
+
+- `y` loops back to Step 1 to add another bot — common pattern is to register `claude-bot` / `codex-bot` / `gemini-bot` all in one go, then drop them into the same group for instant A2A.
+- `n` (or Enter) proceeds to Step 5.
+
+### Step 5 — Install agent skills (strongly recommended)
+
+```
+— Agent skills —
+Install agent skills globally? (recommended)
+  - lark-bridge-overlay: bridge-only conventions (injected blocks, card callbacks, OAuth)
+  - lark-im, lark-shared: upstream lark-cli usage guides
+Without these, your bot may echo bridge XML metadata to users or mishandle cards.
+Install now? [Y/n]:
+```
+
+**What this does**: the bridge injects a few "bridge-only" XML blocks when talking to the LLM (`<bridge_context>` describes the current chat, `<quoted_message>` represents the message a user is reply-quoting, `<interactive_card>` represents a card the user is quoting, etc.). If the LLM doesn't know these conventions it may:
+- Echo the XML metadata back to users (you'll see your bot output raw `<chatId>...` in chat)
+- Fail to use `__claude_cb` for card-button callbacks
+- Mishandle `lark-cli auth login` device flow (the device-code poll must run foreground-blocking)
+
+The `lark-bridge-overlay` skill teaches the LLM these. Paired with upstream `larksuite/cli` skills like `lark-im` / `lark-shared`, the LLM also learns how to call `lark-cli` correctly to send cards, images, query group members, etc.
+
+**Default Enter = install**:
+
+```
+Running: bash /Users/.../scripts/install-skills.sh -g -y
+
+✓ installed lark-bridge-overlay → ~/.claude/skills/
+✓ installed lark-im → ~/.claude/skills/
+✓ installed lark-shared → ~/.claude/skills/
+...
+```
+
+Skills install into `~/.claude/skills/`, `~/.agents/skills/`, `~/.codex/skills/`, and `~/.gemini/skills/` (so whichever backend you run, they're picked up).
+
+**If you skip** (type `n`), the terminal says:
+
+```
+Skipped. You can install later with: pnpm skills:install -g -y
+```
+
+Install later from the repo dir:
+
+```bash
+pnpm skills:install -g -y                      # minimal: overlay + lark-im + lark-shared
+UPSTREAM_SKILLS='*' pnpm skills:install -g -y  # all 26 upstream domains (lark-base, lark-calendar, lark-doc, …)
+```
+
+Or pick specific domains:
+
+```bash
+UPSTREAM_SKILLS=lark-im,lark-base,lark-calendar pnpm skills:install -g -y
+```
+
+**Already installed**: if lmcb detects `lark-bridge-overlay` in any agent dir, it silently skips this step and prints:
+
+```
+Agent skills already installed (lark-bridge-overlay detected). Skipping.
+```
+
+### Done
+
+```
+Done. Next steps:
+  node ./bin/lmcb.mjs start --foreground   # for first-time debugging
+  node ./bin/lmcb.mjs ps                   # see worker state
+  In Lark, message the bot to see streaming reply.
+```
 
 ## 4. Start the supervisor
 

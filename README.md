@@ -4,15 +4,16 @@
 
 中文版: [README.zh.md](README.zh.md)
 
-## What it feels like
+## Where this shines
 
-You already have `claude` / `codex` / `gemini` installed on your laptop. lmcb wraps one of them in a Lark bot so you can reach it from your phone — anywhere. A few concrete moments:
+The real superpower is bringing several local CLIs into the same Lark group as bots, then letting humans and bots interleave. A few real scenarios:
 
-- **Stuck in traffic, prod just broke.** Snap a screenshot of the Sentry stack and DM your `claude-bot`. claude reads the image on your laptop, opens the offending file, drafts a fix, streams the diff back into a Lark card.
-- **Away from the desk, want a build status.** DM `codex-bot` "跑下 pnpm test 看哪些挂了". codex runs it locally, the failing test names stream in line by line.
-- **In a group with teammates triaging a bug.** @-mention the bot; it answers as a quoted reply so the thread stays legible. ⏹ button on the card to abort mid-stream.
+- **Multi-bot A2A in a group.** Drop both `claude-bot` and `codex-bot` into the same group. Ask claude "what are the concurrency risks here?", then @-mention codex "review claude's suggestions for missed edge cases." Two bots cross-check each other in chat — you read the consensus. Agent-to-agent collaboration on a Feishu group as the platform.
+- **Humans + multiple bots triaging together.** Production bug channel: engineer @-mentions `claude-bot` to repro from a screenshot and draft a fix, QA @-mentions `codex-bot` to run regression, PM @-mentions `gemini-bot` to summarise the timeline and impact. Three bots run on your machine; their outputs all land in the same group so everyone sees the full chain.
+- **Have the bot ship code right in the group.** DM (or @-mention) "add a stripe webhook handler in `src/payment.ts`". The bot reads your local code, writes new files, runs tests — the whole PR streams into a Lark card. Teammate spots an issue in the diff? They **quote-reply** the card with their note, the bot incorporates and continues. Multi-human review + bot execution, all in one thread.
+- **Keep going after leaving the desk.** Had an idea at dinner? DM the bot from your phone; it runs on your home laptop, you `git diff` at work the next day.
 
-The CLI keeps its native session id between messages, so multi-turn context survives — claude `--session`, codex `exec resume`, gemini `--resume`, transparently.
+Session continuity is automatic — claude `--session`, codex `exec resume`, gemini `--resume` — so multi-turn context follows the conversation. Each bot keeps its own session per chat, so multiple bots in one group don't cross-bleed.
 
 ## 60-second setup
 
@@ -53,44 +54,10 @@ Designed for **one developer's bots on one machine**, but inside that scope it s
 - **Same chat, multiple bots, no bleed.** SessionStore is keyed per `(chatId, botName)` — claude's UUID and codex's thread_id never cross-feed, so a single group can hold parallel conversations with different agents.
 - **Per-bot `lark-cli` identity.** Every `lark-cli` call from inside the LLM subprocess routes to the calling bot's profile via a per-bot PATH shim (`--profile <app_id>` pinned). No identity leakage even with many bots active.
 
-## Operational essentials
-
-- **Crash recovery** — exponential back-off (1s → 30s); worker disabled after 5 crashes in 3 minutes, re-enabled with `lmcb restart <bot>`.
-- **macOS launchd daemon** — `lmcb daemon install` for boot-time start. Linux works in foreground; systemd unit generation deferred.
-- **Bots-dir hot-reload** — edit a `bots/*.yaml` and the worker restarts (500 ms debounce).
-- **Preempt + 500 ms batch** — rapid follow-ups merge into a single CLI run rather than spawning a redundant one; the reply quote pins to the latest message in the batch.
-- **Full SDK error visibility** — Lark SDK errors stream through pino with `util.inspect({depth: 10})`; nested API failures (`field_violations`, `response.data`) land in worker logs intact instead of being truncated to `[Object]`.
-- **Access control per bot** — allowlist by user or chat; the app owner is implicit admin.
-- **All state under `~/.lark-multi-cli-bridge/`** — config, bot YAMLs, sessions (per (chatId, botName)), logs, media, per-bot `lark-cli` shims.
 
 ## Configuration
 
-### Agent Skills (recommended)
-
-The bridge ships an agent skill, `lark-bridge-overlay`, that teaches the
-LLM the bridge-only conventions (how to read `<bridge_context>` /
-`<quoted_message>` / `<interactive_card>` blocks, the `__claude_cb`
-button-callback pattern, and the foreground-blocking OAuth flow).
-
-It pairs with upstream `larksuite/cli` skills that cover `lark-cli`
-itself — the official Lark CLI ships 26 domain skills (`lark-im`,
-`lark-base`, `lark-calendar`, etc.). Install both layers in one shot:
-
-```bash
-pnpm skills:install -g -y                     # global, no prompts
-UPSTREAM_SKILLS='*' pnpm skills:install -g -y # all 26 upstream + overlay
-```
-
-By default the install picks the minimum useful upstream set
-(`lark-im,lark-shared`) plus this repo's overlay. Override with
-`UPSTREAM_SKILLS=lark-im,lark-base,lark-calendar` or any subset.
-
-Pass `-a claude-code,codex,gemini-cli` to install into specific agent
-dirs, or `-a '*'` for all. `pnpm skills:install --help`-equivalent is
-`npx skills add --help`.
-
-The skill files live in `skills/lark-bridge-overlay/`; verify with
-`npx skills list` after installing.
+> Agent skills (recommended) are installed interactively at the end of `lmcb init` (Step 5). See the [quickstart](docs/quickstart.md) for what they do, what happens if you skip, and how to install later.
 
 ### Skill prompt injection
 
