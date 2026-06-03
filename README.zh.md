@@ -58,7 +58,8 @@ node ./bin/lmcb.mjs start --foreground
 
 | 文档 | 说明 |
 |------|------|
-| [docs/quickstart.zh.md](docs/quickstart.zh.md) | 分步骤安装和首次运行 |
+| [docs/quickstart.zh.md](docs/quickstart.zh.md) | 分步骤安装和首次运行（含 `lmcb init` 流程 + agent skill 安装） |
+| [docs/configuration.zh.md](docs/configuration.zh.md) | `bot.yaml` 配置项：skill prompt 注入、LLM 卡片按钮回调（`__claude_cb`）、codex `skip_git_repo_check` |
 | [docs/architecture.zh.md](docs/architecture.zh.md) | 进程拓扑、模块映射、IPC、状态 |
 | [docs/adapter-authoring.zh.md](docs/adapter-authoring.zh.md) | 如何添加第 4 种 CLI 后端 |
 | [docs/faq.zh.md](docs/faq.zh.md) | 排错与常见问题 |
