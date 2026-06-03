@@ -1,0 +1,4 @@
+# pnpm 11: approve postinstall build scripts (replaces onlyBuiltDependencies).
+allowBuilds:
+  esbuild: true
+  protobufjs: true

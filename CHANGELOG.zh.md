@@ -19,6 +19,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### 修复
 
+- **后台 `lmcb start` 完全无法启动 supervisor。** detached spawn 按**源码**目录结构（`src/cli/commands/`）计算 supervisor 入口路径，但 tsup 把 CLI 压平到 `dist/cli/index.js`，路径解析到 `dist/` 之外，子进程秒死——而且因为 `stdio: 'ignore'` 是静默的，CLI 仍打印 `supervisor started (background)`。现在路径正确指向同级的 `dist/supervisor/index.js`，并在 spawn 前增加守卫：入口不存在时显式报 `supervisor entry not found` 并退出，未来构建布局漂移会立刻暴露。前台模式（`--foreground`）从未受影响。详见 [docs/changes/2026-06-03-fix-daemon-supervisor-path.zh.md](docs/changes/2026-06-03-fix-daemon-supervisor-path.zh.md)。
 - **bot self open_id / app owner 解析不再每次启动都失败。** `fetchBotSelfOpenId` 走了 SDK 的裸 `httpInstance`（无鉴权、无 domain baseURL——必然抛错），`fetchAppOwnerOpenId` 漏传 API 必填的 `lang` 参数（400 `lang is required`）。两者静默返回 `undefined`，导致群 @-mention 前缀从未被剥离、app-owner 访问兜底从未生效。现改走鉴权的 `client.request` 并补 `params: { lang }`，按 `owner_id`/`creator_id` 兜底。详见 [docs/changes/2026-06-03-bot-self-open-id-resolution.zh.md](docs/changes/2026-06-03-bot-self-open-id-resolution.zh.md)。
 - **`ensureLarkProfile` 在 `profile add` 后校验 profile 真正落盘。** add 是对共享配置文件的读-改-写；兄弟 worker 的并发 add 或配置 home 分叉（`LARK_CHANNEL` / `LARK_CLI_HOME`）可能把它吞掉，而 worker 仍记日志 "provisioned"——问题要到 LLM 每次调 lark-cli 报 `profile not found` 时才暴露。现在 add 后回读列表，任何丢写都变成响亮的启动错误。详见 [docs/changes/2026-06-03-profile-provision-verify.zh.md](docs/changes/2026-06-03-profile-provision-verify.zh.md)。
 - **卡片按钮不再因一次网络抖动就死于"目标回调服务当前未在线"。** worker 的 Lark WebSocket 可能变成半开连接（空闲窗口内服务端侧断开；NAT/代理空闲回收），而 SDK 毫无感知：其 pong 存活看门狗是 opt-in 的，`LarkWsClient` 没传 `wsConfig.pingTimeout`，导致 `readyState` 一直 `OPEN`、`close`/`error` 不触发、自动重连永不启动，飞书侧判定 app 离线，只能手动重启恢复。现在 `WSClient` 构造时传入 `wsConfig: { pingTimeout: 3 }`（ping 发出 3 秒无回应即 terminate 并重连）、`handshakeTimeoutMs: 8000`（握手快速失败），并以 warn 级别记录 `onReconnecting`/`onReconnected`，之后再掉线在 worker 日志里可见。详见 [docs/changes/2026-06-03-ws-ping-timeout-watchdog.zh.md](docs/changes/2026-06-03-ws-ping-timeout-watchdog.zh.md)。
@@ -29,6 +30,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### 内部
 
+- 新增 `pnpm-workspace.yaml`，配置 `allowBuilds: {esbuild: true, protobufjs: true}` —— pnpm 11 移除了 `onlyBuiltDependencies` 且默认禁止所有 postinstall 脚本，全新 checkout 时 `pnpm install`（乃至所有脚本）都会失败。
 - 新增 `src/lark/sdk-logger.ts` —— 实现 Lark SDK `Logger` 接口，转发到 pino 并完整展开对象。
 - 在 `src/adapters/gemini.ts` 中新增导出 `parseGeminiJsonLine`，与适配器并列（可独立单测）。
 - 新增测试 fixture：`tests/adapters/__fixtures__/gemini/stream-json-{simple,tools}.jsonl`，以及 `tests/worker/lark-sink.test.ts`（同时覆盖 reply 与顶层 `im.message.create` 两条分支）。
