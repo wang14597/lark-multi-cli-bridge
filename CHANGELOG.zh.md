@@ -18,6 +18,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### 修复
 
+- **后台 `lmcb start` 完全无法启动 supervisor。** detached spawn 按**源码**目录结构（`src/cli/commands/`）计算 supervisor 入口路径，但 tsup 把 CLI 压平到 `dist/cli/index.js`，路径解析到 `dist/` 之外，子进程秒死——而且因为 `stdio: 'ignore'` 是静默的，CLI 仍打印 `supervisor started (background)`。现在路径正确指向同级的 `dist/supervisor/index.js`，并在 spawn 前增加守卫：入口不存在时显式报 `supervisor entry not found` 并退出，未来构建布局漂移会立刻暴露。前台模式（`--foreground`）从未受影响。详见 [docs/changes/2026-06-03-fix-daemon-supervisor-path.zh.md](docs/changes/2026-06-03-fix-daemon-supervisor-path.zh.md)。
 - **跨 bot session 串号（根因修复）**：`claude-bot` 的 session UUID 被传给 codex 的 `exec resume`，导致后者立即报 `thread/resume: no rollout found for thread id <id>`——该聊天对第二个 bot 实际被锁死，必须 `/new` 才能恢复。上述按 (chatId, botName) 隔离的 SessionStore 改造从源头消除了这种串号，`claude-bot` 的 UUID 永远不会被 `codex-bot` 看到，即使两者共用一个聊天。
 - **Gemini CLI 0.42+ 参数兼容**：`--prompt-interactive=false` 被 0.42 yargs 解析为「设置 `-i` 为 'false'」，与 `-p` 冲突报错 `Cannot use both --prompt and --prompt-interactive together`；`--chat-id` 在 0.42 已完全移除（由 `--resume` 替代）。两个 flag 都已从适配器中删除。
 - **Gemini agent-loop 的工具事件不再让卡片卡死在 `🧠 正在思考`。** 初版 0.44 parser 只处理 `init` / `message` / `result`，但 gemini-cli 默认是 agentic 的，每次内部工具调用（`list_directory`、`google_web_search` 等）都会发 `tool_use` / `tool_result` 行。Parser 现在把 `tool_use → tool-call`、`tool_result → tool-result` 映射出来，卡片流就能实时渲染整个 agent loop。
@@ -25,6 +26,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### 内部
 
+- 新增 `pnpm-workspace.yaml`，配置 `allowBuilds: {esbuild: true, protobufjs: true}` —— pnpm 11 移除了 `onlyBuiltDependencies` 且默认禁止所有 postinstall 脚本，全新 checkout 时 `pnpm install`（乃至所有脚本）都会失败。
 - 新增 `src/lark/sdk-logger.ts` —— 实现 Lark SDK `Logger` 接口，转发到 pino 并完整展开对象。
 - 在 `src/adapters/gemini.ts` 中新增导出 `parseGeminiJsonLine`，与适配器并列（可独立单测）。
 - 新增测试 fixture：`tests/adapters/__fixtures__/gemini/stream-json-{simple,tools}.jsonl`，以及 `tests/worker/lark-sink.test.ts`（同时覆盖 reply 与顶层 `im.message.create` 两条分支）。

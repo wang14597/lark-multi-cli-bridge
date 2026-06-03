@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file. Format insp
 
 ### Fixed
 
+- **Background `lmcb start` could not start the supervisor at all.** The detached spawn computed the supervisor entry path against the *source* layout (`src/cli/commands/`), but tsup flattens the CLI into `dist/cli/index.js`, so the path resolved outside `dist/` and the child died instantly — silently, since it runs with `stdio: 'ignore'` while the CLI still printed `supervisor started (background)`. The path now resolves one level up to the sibling `dist/supervisor/index.js`, and a pre-spawn guard exits loudly with `supervisor entry not found` if the build layout ever drifts again. Foreground mode (`--foreground`) was never affected. See [docs/changes/2026-06-03-fix-daemon-supervisor-path.md](docs/changes/2026-06-03-fix-daemon-supervisor-path.md).
 - **Cross-bot session bleed (root cause)**: a `claude-bot` session UUID was being passed to codex's `exec resume`, which then bailed with `thread/resume: no rollout found for thread id <id>`. The chat was effectively bricked for the second bot until `/new`. The per-(chatId, botName) SessionStore scoping above eliminates this at the source — `claude-bot`'s UUID is never visible to `codex-bot` even when they share a chat.
 - **Gemini CLI 0.42+ arg compatibility**: `--prompt-interactive=false` was being parsed by 0.42 yargs as "set `-i` to value 'false'", colliding with `-p` (`Cannot use both --prompt and --prompt-interactive together`). `--chat-id` was removed entirely in favour of `--resume`. Both flags are dropped from the adapter.
 - **Gemini agent-loop tool events no longer freeze the card on `🧠 正在思考`.** The initial 0.44 parser only handled `init` / `message` / `result`, but gemini-cli is agentic by default and emits `tool_use` / `tool_result` lines around every internal tool call (`list_directory`, `google_web_search`, etc.). Parser now maps `tool_use → tool-call` and `tool_result → tool-result` so the card streamer renders the agent loop in real time.
@@ -25,6 +26,7 @@ All notable changes to this project will be documented in this file. Format insp
 
 ### Internal
 
+- New `pnpm-workspace.yaml` with `allowBuilds: {esbuild: true, protobufjs: true}` — pnpm 11 removed `onlyBuiltDependencies` and blocks all postinstall scripts by default, which broke `pnpm install` (and therefore every script) on fresh checkouts.
 - New `src/lark/sdk-logger.ts` — Lark SDK `Logger` interface implementation that proxies to pino with full-depth inspect.
 - New exported `parseGeminiJsonLine` in `src/adapters/gemini.ts` alongside the adapter (independently unit-tested).
 - New test fixtures: `tests/adapters/__fixtures__/gemini/stream-json-{simple,tools}.jsonl`, plus `tests/worker/lark-sink.test.ts` covering both reply and top-level `im.message.create` branches.
