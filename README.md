@@ -6,6 +6,8 @@
 
 ## Where this shines
 
+> See [`docs/examples/multi-bot-a2a.md`](docs/examples/multi-bot-a2a.md) for an annotated screenshot of three bots (claude / codex / gemini) introducing each other in one group — driven by a single user prompt.
+
 The real superpower is bringing several local CLIs into the same Lark group as bots, then letting humans and bots interleave. A few real scenarios:
 
 - **Multi-bot A2A in a group.** Drop both `claude-bot` and `codex-bot` into the same group. Ask claude "what are the concurrency risks here?", then @-mention codex "review claude's suggestions for missed edge cases." Two bots cross-check each other in chat — you read the consensus. Agent-to-agent collaboration on a Feishu group as the platform.

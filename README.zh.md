@@ -6,6 +6,8 @@ English: [README.md](README.md)
 
 ## 这能用在哪些场景
 
+> 截图实例见 [`docs/examples/multi-bot-a2a.zh.md`](docs/examples/multi-bot-a2a.zh.md)：用户一句 prompt，claude / codex / gemini 三个 bot 在同一个群里互相介绍。
+
 把多个本机 CLI 包成 bot 拉进同一个飞书群是 lmcb 真正的杀手锏。几个真实场景：
 
 - **群里多 bot A2A，互相挑战、互相补盲。** 把 `claude-bot` 和 `codex-bot` 都加进同一个群。问 claude "这段并发代码有啥风险"，拿到答案再 @ codex "你 review 一下 claude 的建议有没有漏掉边缘 case"，两个 bot 在群里互相点评——你只看结论。本质上是 agent-to-agent 协作，平台是飞书群。
