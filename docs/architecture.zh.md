@@ -31,7 +31,7 @@ English: [architecture.md](architecture.md)
  (每条消息独立)       (每条消息独立)        (每条消息独立)
 ```
 
-每个 worker 以独立 bot 身份维持持久的 Lark WebSocket 长连接。消息处理完全在 worker 进程内完成——supervisor 不感知消息内容。
+每个 worker 以独立 bot 身份维持持久的 Lark WebSocket 长连接。消息处理完全在 worker 进程内完成——supervisor 不感知消息内容。连接启用了 SDK 的 pong 存活看门狗（`wsConfig.pingTimeout: 3`）：半开 socket（空闲窗口内服务端侧断开）在 ping 发出 3 秒无回应后被 terminate，从而触发 SDK 自动重连；重连过程以 warn 级别记录日志。不传这个参数时看门狗是空操作，死连接会让 bot 在飞书侧"离线"（卡片按钮失效、消息被丢弃），直到重启才恢复。
 
 ### lmcb 如何为 lark-cli 子进程隔离 bot 身份
 

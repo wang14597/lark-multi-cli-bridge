@@ -29,18 +29,21 @@ interface LarkCliProfile {
   active: boolean;
 }
 
-export async function ensureLarkProfile(bot: Bot, deps: ProvisionDeps): Promise<void> {
+async function listProfiles(deps: ProvisionDeps): Promise<LarkCliProfile[]> {
   // lark-cli 1.0.43/1.0.45 emit JSON by default and have no --format flag.
   const listed = await deps.runLarkCli(['profile', 'list']);
   if (listed.exitCode !== 0) {
     throw new Error(`lark-cli profile list failed (exit ${listed.exitCode}): ${listed.stderr}`);
   }
-  let profiles: LarkCliProfile[];
   try {
-    profiles = JSON.parse(listed.stdout) as LarkCliProfile[];
+    return JSON.parse(listed.stdout) as LarkCliProfile[];
   } catch (err) {
     throw new Error(`lark-cli profile list returned non-JSON stdout: ${(err as Error).message}`);
   }
+}
+
+export async function ensureLarkProfile(bot: Bot, deps: ProvisionDeps): Promise<void> {
+  const profiles = await listProfiles(deps);
   const match = profiles.find((p) => p.appId === bot.lark.app_id);
   if (match) return;
 
@@ -60,6 +63,21 @@ export async function ensureLarkProfile(bot: Bot, deps: ProvisionDeps): Promise<
   );
   if (added.exitCode !== 0) {
     throw new Error(`lark-cli profile add failed (exit ${added.exitCode}): ${added.stderr}`);
+  }
+
+  // Verify the add actually landed. `profile add` is a read-modify-write on a
+  // shared config file: a concurrent add from a sibling worker can clobber it
+  // (lost update), and env markers like LARK_CHANNEL / LARK_CLI_HOME can
+  // silently point the CLI at a different config home. Without this re-list,
+  // such losses were logged as "provisioned" and only surfaced later as
+  // runtime auth failures in the LLM's lark-cli calls.
+  const after = await listProfiles(deps);
+  if (!after.some((p) => p.appId === bot.lark.app_id)) {
+    throw new Error(
+      `lark-cli profile ${bot.lark.app_id} missing after add reported success — ` +
+        `possible concurrent write to the lark-cli config or a diverging config home ` +
+        `(check LARK_CHANNEL / LARK_CLI_HOME in the environment lmcb runs in)`,
+    );
   }
 }
 

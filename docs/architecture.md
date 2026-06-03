@@ -31,7 +31,7 @@ See the canonical design document under `docs/superpowers/specs/` for the full s
  (one-shot/msg)      (one-shot/msg)        (one-shot/msg)
 ```
 
-Each worker holds a persistent Lark WebSocket connection for its bot identity. Inbound messages are handled entirely inside that worker process — the supervisor does not see message content.
+Each worker holds a persistent Lark WebSocket connection for its bot identity. Inbound messages are handled entirely inside that worker process — the supervisor does not see message content. The connection runs with the SDK's pong-liveness watchdog armed (`wsConfig.pingTimeout: 3`): a half-open socket (server-side drop during an idle window) is terminated 3 s after an unanswered ping, which triggers the SDK's auto-reconnect; reconnect cycles are logged at warn level. Without this knob the watchdog is a no-op and a dead connection leaves the bot "offline" on Lark's side (dead card buttons, dropped messages) until restart.
 
 ### How lmcb isolates bot identity for lark-cli children
 
