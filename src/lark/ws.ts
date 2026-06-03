@@ -72,6 +72,21 @@ export class LarkWsClient extends EventEmitter {
       domain: this.opts.domain === 'feishu' ? Lark.Domain.Feishu : Lark.Domain.Lark,
       loggerLevel: Lark.LoggerLevel.warn,
       ...(this.opts.logger ? { logger: this.opts.logger } : {}),
+      // Liveness watchdog (SDK 1.65+ knob). Without pingTimeout the SDK's
+      // armLiveness() is a no-op: when the TCP path dies silently (NAT/proxy
+      // idle reclaim, network flap) the socket stays half-open, readyState
+      // remains OPEN, pings vanish into the void, and the SDK never
+      // reconnects. Lark's side marks the app offline, so card button clicks
+      // fail with "目标回调服务当前未在线" until the worker restarts.
+      // 3s after a ping with no inbound frame → terminate → auto-reconnect.
+      wsConfig: { pingTimeout: 3 },
+      // Fast-fail handshakes (default 15s) so reconnect loops recover quickly
+      // on unstable networks.
+      handshakeTimeoutMs: 8000,
+      // Surface reconnect cycles at warn level — a silent drop here is
+      // exactly the failure mode that made dead card buttons undebuggable.
+      onReconnecting: () => this.opts.logger?.warn('[ws] connection lost, reconnecting'),
+      onReconnected: () => this.opts.logger?.warn('[ws] reconnected'),
     });
     this.wsClient = wsClient;
 

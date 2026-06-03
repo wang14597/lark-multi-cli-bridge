@@ -18,6 +18,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### 修复
 
+- **卡片按钮不再因一次网络抖动就死于"目标回调服务当前未在线"。** worker 的 Lark WebSocket 可能变成半开连接（空闲窗口内服务端侧断开；NAT/代理空闲回收），而 SDK 毫无感知：其 pong 存活看门狗是 opt-in 的，`LarkWsClient` 没传 `wsConfig.pingTimeout`，导致 `readyState` 一直 `OPEN`、`close`/`error` 不触发、自动重连永不启动，飞书侧判定 app 离线，只能手动重启恢复。现在 `WSClient` 构造时传入 `wsConfig: { pingTimeout: 3 }`（ping 发出 3 秒无回应即 terminate 并重连）、`handshakeTimeoutMs: 8000`（握手快速失败），并以 warn 级别记录 `onReconnecting`/`onReconnected`，之后再掉线在 worker 日志里可见。详见 [docs/changes/2026-06-03-ws-ping-timeout-watchdog.zh.md](docs/changes/2026-06-03-ws-ping-timeout-watchdog.zh.md)。
 - **跨 bot session 串号（根因修复）**：`claude-bot` 的 session UUID 被传给 codex 的 `exec resume`，导致后者立即报 `thread/resume: no rollout found for thread id <id>`——该聊天对第二个 bot 实际被锁死，必须 `/new` 才能恢复。上述按 (chatId, botName) 隔离的 SessionStore 改造从源头消除了这种串号，`claude-bot` 的 UUID 永远不会被 `codex-bot` 看到，即使两者共用一个聊天。
 - **Gemini CLI 0.42+ 参数兼容**：`--prompt-interactive=false` 被 0.42 yargs 解析为「设置 `-i` 为 'false'」，与 `-p` 冲突报错 `Cannot use both --prompt and --prompt-interactive together`；`--chat-id` 在 0.42 已完全移除（由 `--resume` 替代）。两个 flag 都已从适配器中删除。
 - **Gemini agent-loop 的工具事件不再让卡片卡死在 `🧠 正在思考`。** 初版 0.44 parser 只处理 `init` / `message` / `result`，但 gemini-cli 默认是 agentic 的，每次内部工具调用（`list_directory`、`google_web_search` 等）都会发 `tool_use` / `tool_result` 行。Parser 现在把 `tool_use → tool-call`、`tool_result → tool-result` 映射出来，卡片流就能实时渲染整个 agent loop。
