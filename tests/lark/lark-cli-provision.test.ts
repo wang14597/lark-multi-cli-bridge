@@ -53,23 +53,28 @@ describe('ensureLarkProfile', () => {
     expect(calls[0]!.args).toEqual(['profile', 'list']);
   });
 
-  it('runs profile add with --app-secret-stdin when app_id missing from list', async () => {
-    const { runLarkCli, calls } = makeRunner([
-      {
-        match: (args) => args[0] === 'profile' && args[1] === 'list',
-        result: {
-          stdout: JSON.stringify([
-            { name: 'other', appId: 'cli_aa93d72c97f9deea', brand: 'lark', active: true },
-          ]),
-          stderr: '',
-          exitCode: 0,
-        },
-      },
-      {
-        match: (args) => args[0] === 'profile' && args[1] === 'add',
-        result: { stdout: 'OK', stderr: '', exitCode: 0 },
-      },
-    ]);
+  it('runs profile add with --app-secret-stdin when app_id missing from list, then re-lists to verify', async () => {
+    // Stateful mock: the profile appears in `profile list` only after `add`
+    // ran — mirroring the real CLI's persisted config.
+    let added = false;
+    const calls: Array<{ args: string[]; stdin?: string }> = [];
+    const runLarkCli = vi.fn(async (args: string[], opts?: { stdin?: string }) => {
+      calls.push({ args, ...(opts?.stdin !== undefined ? { stdin: opts.stdin } : {}) });
+      if (args[0] === 'profile' && args[1] === 'list') {
+        const profiles = [
+          { name: 'other', appId: 'cli_aa93d72c97f9deea', brand: 'lark', active: true },
+          ...(added
+            ? [{ name: 'cli_aa96561a57b81ed1', appId: 'cli_aa96561a57b81ed1', brand: 'lark', active: false }]
+            : []),
+        ];
+        return { stdout: JSON.stringify(profiles), stderr: '', exitCode: 0 };
+      }
+      if (args[0] === 'profile' && args[1] === 'add') {
+        added = true;
+        return { stdout: 'OK', stderr: '', exitCode: 0 };
+      }
+      throw new Error(`unexpected runLarkCli args: ${JSON.stringify(args)}`);
+    });
 
     await ensureLarkProfile(bot, {
       runLarkCli,
@@ -77,7 +82,7 @@ describe('ensureLarkProfile', () => {
       mkdirp: vi.fn(),
     });
 
-    expect(calls.length).toBe(2);
+    expect(calls.length).toBe(3);
     expect(calls[1]!.args).toEqual([
       'profile',
       'add',
@@ -90,6 +95,28 @@ describe('ensureLarkProfile', () => {
       '--app-secret-stdin',
     ]);
     expect(calls[1]!.stdin).toBe('sekrit');
+    expect(calls[2]!.args).toEqual(['profile', 'list']);
+  });
+
+  it('throws when the profile is still missing after a successful add (lost write)', async () => {
+    // `profile add` exits 0 but the profile never lands in the persisted
+    // config — e.g. a concurrent add from a sibling worker clobbered the
+    // shared config file, or the CLI resolved a different config home
+    // (LARK_CHANNEL / LARK_CLI_HOME). Previously this was logged as
+    // "provisioned" and only surfaced later as runtime auth failures.
+    const { runLarkCli } = makeRunner([
+      {
+        match: (args) => args[0] === 'profile' && args[1] === 'list',
+        result: { stdout: '[]', stderr: '', exitCode: 0 },
+      },
+      {
+        match: (args) => args[0] === 'profile' && args[1] === 'add',
+        result: { stdout: 'OK', stderr: '', exitCode: 0 },
+      },
+    ]);
+    await expect(
+      ensureLarkProfile(bot, { runLarkCli, writeFile: vi.fn(), mkdirp: vi.fn() }),
+    ).rejects.toThrow(/missing after add/);
   });
 
   it('throws when profile add fails', async () => {
