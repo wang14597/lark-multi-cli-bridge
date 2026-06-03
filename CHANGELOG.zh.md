@@ -13,6 +13,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### 变更
 
+- **Lark SDK 构造经 `baseSdkOptions` 去重。** `createLarkClient` 和 `LarkWsClient` 各拷了一份相同的 `domain` / `loggerLevel` / 条件 `logger` 三元组；现统一展开 `src/lark/sdk-options.ts` 的 `baseSdkOptions(opts)`。behavior-preserving 重构。详见 [docs/changes/2026-06-03-base-sdk-options.zh.md](docs/changes/2026-06-03-base-sdk-options.zh.md)。
 - **SessionStore 现在按 (chatId, botName) 二维存储**，不再仅按 chat。同一个聊天若被多个 bot 服务（如群内同时有 `claude-bot` + `codex-bot`），每个 bot 各自独立维护 `sessionId` / `cwd`。旧版 v1 文件（`chats[chatId]` = ChatSession）在第一次 `load()` 时自动迁移为 v2（`chats[chatId][botName]` = ChatSession）并写回，无需手动清理。Store API 现在接受 `botName` 参数——`get(chatId, botName)` / `reset(chatId, botName)` / `setCwd(chatId, botName, cwd, reset)`；`list()` 返回扁平化的 `{chatId, botName, session}` 数组。
 - **Lark SDK 错误日志完整展开，不再被截断为 `[Object]` / `[Array]`。** 新增 `adaptLarkLogger(pinoLogger)` 适配器，把 SDK 日志通过 pino 输出，使用 `util.inspect({depth: 10})` 序列化，嵌套的 API 错误结构（`field_violations`、`config`、`response.data`）完整落入 worker 日志。worker 把这个 logger 同时注入 `Lark.Client` 与 `Lark.WSClient`。
 

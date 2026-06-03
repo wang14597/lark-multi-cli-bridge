@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 import * as Lark from '@larksuiteoapi/node-sdk';
 import type { SdkLogger } from './sdk-logger.js';
+import { baseSdkOptions } from './sdk-options.js';
 
 export interface LarkClientOpts {
   appId: string;
@@ -17,9 +18,7 @@ export function createLarkClient(opts: LarkClientOpts): Lark.Client {
   return new Lark.Client({
     appId: opts.appId,
     appSecret: opts.appSecret,
-    domain: opts.domain === 'feishu' ? Lark.Domain.Feishu : Lark.Domain.Lark,
-    loggerLevel: Lark.LoggerLevel.warn,
-    ...(opts.logger ? { logger: opts.logger } : {}),
+    ...baseSdkOptions(opts),
   });
 }
 

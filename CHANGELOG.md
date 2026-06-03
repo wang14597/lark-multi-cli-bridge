@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file. Format insp
 
 ### Changed
 
+- **Lark SDK construction de-duplicated via `baseSdkOptions`.** `createLarkClient` and `LarkWsClient` shared identical copies of the `domain` / `loggerLevel` / conditional-`logger` triple; both now spread `baseSdkOptions(opts)` from `src/lark/sdk-options.ts`. Behavior-preserving refactor. See [docs/changes/2026-06-03-base-sdk-options.md](docs/changes/2026-06-03-base-sdk-options.md).
 - **SessionStore is now scoped per (chatId, botName)** instead of per chat. A chat served by multiple bots (e.g. `claude-bot` + `codex-bot` in the same group) keeps an independent `sessionId` / `cwd` slot for each bot. Legacy v1 files (`chats[chatId]` = ChatSession) are auto-migrated to v2 (`chats[chatId][botName]` = ChatSession) on first `load()` and persisted, no manual cleanup required. The store API now takes a `botName` parameter — `get(chatId, botName)` / `reset(chatId, botName)` / `setCwd(chatId, botName, cwd, reset)` — and `list()` returns flattened `{chatId, botName, session}` entries.
 - **Lark SDK errors render in full instead of truncated to `[Object]` / `[Array]`.** A new `adaptLarkLogger(pinoLogger)` adapter routes SDK log lines through pino with `util.inspect({depth: 10})`, so nested API error payloads (`field_violations`, `config`, `response.data`) land in the worker log with full structure. The worker wires this into both `Lark.Client` and `Lark.WSClient`.
 
