@@ -35,10 +35,20 @@ export async function fetchAppOwnerOpenId(client: Lark.Client, appId: string): P
     const sdk = client as unknown as { application?: { application?: { get?: (req: unknown) => Promise<unknown> } } };
     const get = sdk.application?.application?.get;
     if (typeof get !== 'function') return undefined;
-    const res = (await get({ path: { app_id: appId } })) as {
-      data?: { app?: { owner?: { open_id?: string; owner_id?: string } } };
+    // `lang` is mandatory: the API 400s with "lang is required" without it,
+    // which made this helper silently return undefined on every startup.
+    const res = (await get({ path: { app_id: appId }, params: { lang: 'zh_cn' } })) as {
+      data?: {
+        app?: { owner?: { open_id?: string; owner_id?: string }; creator_id?: string };
+      };
     };
-    return res.data?.app?.owner?.open_id ?? res.data?.app?.owner?.owner_id ?? undefined;
+    const owner = res.data?.app?.owner;
+    // owner.owner_id is the populated field on real payloads; open_id kept
+    // for older SDK shapes. Self-built apps may return an owner object with
+    // empty ids — creator_id is always populated, fall back to it.
+    return (
+      owner?.open_id || owner?.owner_id || res.data?.app?.creator_id || undefined
+    );
   } catch {
     return undefined;
   }
@@ -52,12 +62,12 @@ export async function fetchAppOwnerOpenId(client: Lark.Client, appId: string): P
  */
 export async function fetchBotSelfOpenId(client: Lark.Client, _appId: string): Promise<string | undefined> {
   try {
-    // Use the SDK's low-level httpInstance to call the bot/v3/info endpoint directly.
-    // This API does not require path params — the identity is derived from the
-    // app credentials already embedded in the client.
-    const http = (client as unknown as { httpInstance?: { request: (opts: { url: string; method: string }) => Promise<unknown> } }).httpInstance;
-    if (!http || typeof http.request !== 'function') return undefined;
-    const res = (await http.request({ url: '/open-apis/bot/v3/info', method: 'GET' })) as {
+    // Go through Client.request, NOT the raw httpInstance: only the former
+    // injects the tenant token and prefixes the domain. The raw axios
+    // instance has neither, so a relative-URL request through it always
+    // threw and this helper silently returned undefined — every worker
+    // logged "bot self open_id NOT resolved".
+    const res = (await client.request({ method: 'GET', url: '/open-apis/bot/v3/info' })) as {
       bot?: { open_id?: string };
       data?: { bot?: { open_id?: string } };
     };
