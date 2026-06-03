@@ -4,9 +4,11 @@
 
 中文版: [README.zh.md](README.zh.md)
 
-## Where this shines
+[![Three bots — claude, codex, gemini — introducing each other in a Lark group, driven by a single user prompt](docs/examples/multi-bot-a2a.png)](docs/examples/multi-bot-a2a.md)
 
-> See [`docs/examples/multi-bot-a2a.md`](docs/examples/multi-bot-a2a.md) for an annotated screenshot of three bots (claude / codex / gemini) introducing each other in one group — driven by a single user prompt.
+<sub>One human prompt → three bots (claude / codex / gemini) introduce themselves to each other, using `lark-cli` to discover group members and dispatch `@`-mentioned greetings — all on a single laptop, all in one Lark group. [Full walkthrough →](docs/examples/multi-bot-a2a.md)</sub>
+
+## Where this shines
 
 The real superpower is bringing several local CLIs into the same Lark group as bots, then letting humans and bots interleave. A few real scenarios:
 

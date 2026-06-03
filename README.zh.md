@@ -4,9 +4,11 @@
 
 English: [README.md](README.md)
 
-## 这能用在哪些场景
+[![三个 bot —— claude / codex / gemini —— 在同一个飞书群里互相介绍，由用户一句 prompt 驱动](docs/examples/multi-bot-a2a.png)](docs/examples/multi-bot-a2a.zh.md)
 
-> 截图实例见 [`docs/examples/multi-bot-a2a.zh.md`](docs/examples/multi-bot-a2a.zh.md)：用户一句 prompt，claude / codex / gemini 三个 bot 在同一个群里互相介绍。
+<sub>用户一句 prompt → 三个 bot（claude / codex / gemini）通过 `lark-cli` 查群成员、互相 `@` 打招呼自我介绍——全部跑在一台笔记本上，全部在一个飞书群里完成。[完整 walkthrough →](docs/examples/multi-bot-a2a.zh.md)</sub>
+
+## 这能用在哪些场景
 
 把多个本机 CLI 包成 bot 拉进同一个飞书群是 lmcb 真正的杀手锏。几个真实场景：
 
