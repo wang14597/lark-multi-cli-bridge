@@ -43,8 +43,10 @@ that typo into a confusing failure:
   missing or not a directory.
 - `spawnWithLifecycle` (`src/adapters/base.ts`): on spawn failure, if a
   `cwd` was passed and doesn't exist, throw
-  `cwd does not exist: <cwd> (failed to spawn <cmd>)` instead of the
-  misleading generic `failed to spawn <cmd>: spawn <cmd> ENOENT`. This is
+  `directory does not exist: <cwd> (failed to spawn <cmd>)` instead of the
+  misleading generic `failed to spawn <cmd>: spawn <cmd> ENOENT` — phrasing
+  deliberately matched to `validateCwd` so both layers speak the same way.
+  This is
   defense-in-depth for cwds that *were* valid when stored but deleted
   later — command-time validation can't catch those.
 
@@ -64,7 +66,7 @@ that typo into a confusing failure:
   file, no mocks); plus direct `validateCwd` unit tests including the
   EACCES-vs-ENOENT distinction (parent dir chmod `000`, skipped under root).
 - `tests/adapters/base.test.ts` — new regression test: nonexistent cwd
-  must surface as `cwd does not exist: …`, distinct from missing binary.
+  must surface as `directory does not exist: …`, distinct from missing binary.
 
 ## Verification
 

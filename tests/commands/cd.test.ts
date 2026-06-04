@@ -1,13 +1,27 @@
 // SPDX-License-Identifier: MIT
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { cdHandler } from '../../src/commands/handlers/cd.js';
 import { newHandler } from '../../src/commands/handlers/new.js';
 import { validateCwd } from '../../src/commands/cwd.js';
 import { SessionStore } from '../../src/session/store.js';
 import type { CommandCtx } from '../../src/commands/types.js';
+
+// Create a tracked temp dir; all of them are removed after each test so the
+// suite doesn't leak directories into the OS tmpdir.
+const tmpDirs: string[] = [];
+function mkTmp(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'lmcb-cd-test-'));
+  tmpDirs.push(dir);
+  return dir;
+}
+afterEach(() => {
+  for (const dir of tmpDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 function makeCtx(args: string[], sessions: SessionStore) {
   const replies: string[] = [];
@@ -25,7 +39,7 @@ function makeCtx(args: string[], sessions: SessionStore) {
 }
 
 async function makeStore(): Promise<{ store: SessionStore; dir: string }> {
-  const dir = mkdtempSync(join(tmpdir(), 'lmcb-cd-test-'));
+  const dir = mkTmp();
   const store = new SessionStore(join(dir, 'sessions.json'));
   await store.load();
   return { store, dir };
@@ -93,7 +107,7 @@ describe('validateCwd', () => {
   });
 
   it('returns "not a directory" for a path that is a regular file', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'lmcb-validate-'));
+    const dir = mkTmp();
     const filePath = join(dir, 'a-file.txt');
     writeFileSync(filePath, 'x');
     const msg = await validateCwd(filePath);
@@ -101,18 +115,18 @@ describe('validateCwd', () => {
   });
 
   it('returns undefined for an existing directory', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'lmcb-validate-'));
-    expect(await validateCwd(dir)).toBeUndefined();
+    expect(await validateCwd(mkTmp())).toBeUndefined();
   });
 
   it('reports a permission error distinctly from "does not exist"', async () => {
     // A path whose parent directory lacks the execute (x) bit can't be
     // stat'd — Node throws EACCES, not ENOENT. The old catch-all reported
     // every stat failure as "does not exist", which is misleading: the
-    // directory may well exist, we just can't see it. Root bypasses the
-    // permission check, so skip there.
-    if (process.getuid?.() === 0) return;
-    const dir = mkdtempSync(join(tmpdir(), 'lmcb-validate-'));
+    // directory may well exist, we just can't see it. POSIX-only: Windows
+    // has no execute bit (chmod is largely a no-op) and root bypasses the
+    // permission check, so skip in both cases.
+    if (process.platform === 'win32' || process.getuid?.() === 0) return;
+    const dir = mkTmp();
     const locked = join(dir, 'locked');
     mkdirSync(locked);
     const child = join(locked, 'child');

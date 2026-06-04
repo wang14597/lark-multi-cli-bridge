@@ -39,7 +39,8 @@ slug: cwd-validation-and-spawn-cwd-error
   目录时**直接拒绝，完全不碰 session store**。
 - `spawnWithLifecycle`（`src/adapters/base.ts`）：spawn 失败时若传入了
   `cwd` 且该目录不存在，抛出
-  `cwd does not exist: <cwd> (failed to spawn <cmd>)`，替代误导性的
+  `directory does not exist: <cwd> (failed to spawn <cmd>)`（措辞刻意与
+  `validateCwd` 对齐，两层用同一套说法），替代误导性的
   `failed to spawn <cmd>: spawn <cmd> ENOENT`。这是纵深防御——cwd
   落盘时合法、之后被删除的场景，命令时校验拦不住。
 
@@ -58,7 +59,7 @@ slug: cwd-validation-and-spawn-cwd-error
   `validateCwd` 的单元测试，含 EACCES 与 ENOENT 的区分（父目录 chmod
   `000`，root 下跳过）。
 - `tests/adapters/base.test.ts` —— 新增回归测试：cwd 不存在必须报
-  `cwd does not exist: …`，与二进制缺失区分开。
+  `directory does not exist: …`，与二进制缺失区分开。
 
 ## Verification / 验证
 

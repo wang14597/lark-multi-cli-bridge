@@ -49,7 +49,7 @@ describe('spawnWithLifecycle', () => {
           void _line;
         }
       })(),
-    ).rejects.toThrow(/cwd does not exist: \/definitely\/does\/not\/exist\/dir-xyzzy/);
+    ).rejects.toThrow(/directory does not exist: \/definitely\/does\/not\/exist\/dir-xyzzy/);
   });
 
   it('rejects with a catchable error when the binary does not exist (ENOENT)', async () => {
