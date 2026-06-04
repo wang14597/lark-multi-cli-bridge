@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: MIT
-import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { resolveCwd, validateCwd } from '../cwd.js';
 import type { CommandHandler } from '../types.js';
-
-function resolveCwd(value: string): string {
-  if (value === '~') return homedir();
-  if (value.startsWith('~/')) return resolve(homedir(), value.slice(2));
-  return resolve(value);
-}
 
 export const newHandler: CommandHandler = {
   name: 'new',
@@ -21,6 +14,11 @@ export const newHandler: CommandHandler = {
     }
     if (arg) {
       const cwd = resolveCwd(arg);
+      const invalid = await validateCwd(cwd);
+      if (invalid) {
+        await ctx.reply(invalid);
+        return;
+      }
       // Ensure the record exists at the new cwd, then reset clears sessionId.
       // upsert with sessionId: undefined would NOT clear an existing id, it would preserve it,
       // so we upsert (sets cwd/bot/backend) then reset (clears sessionId).

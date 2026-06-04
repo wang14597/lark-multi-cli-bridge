@@ -32,6 +32,26 @@ describe('spawnWithLifecycle', () => {
     expect(lines).toEqual([]);
   });
 
+  it('reports a nonexistent cwd distinctly from a missing binary', async () => {
+    // Regression test: Node reports spawn-with-bad-cwd as "spawn <cmd> ENOENT",
+    // identical to a missing binary. A bot session whose stored cwd had been
+    // deleted (or mistyped via /cd) surfaced as "failed to spawn codex:
+    // spawn codex ENOENT", sending debugging in the wrong direction. The
+    // error must name the real cause: the cwd.
+    const ac = new AbortController();
+    await expect(
+      (async () => {
+        for await (const _line of spawnWithLifecycle('echo', ['hi'], {
+          signal: ac.signal,
+          idleTimeoutMs: 5000,
+          cwd: '/definitely/does/not/exist/dir-xyzzy',
+        })) {
+          void _line;
+        }
+      })(),
+    ).rejects.toThrow(/cwd does not exist: \/definitely\/does\/not\/exist\/dir-xyzzy/);
+  });
+
   it('rejects with a catchable error when the binary does not exist (ENOENT)', async () => {
     // Regression test: previously a missing CLI binary surfaced as an
     // unhandled `'error'` event on the child process, which crashed the
