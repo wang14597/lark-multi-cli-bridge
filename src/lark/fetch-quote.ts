@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-import * as Lark from '@larksuiteoapi/node-sdk';
+import type * as Lark from '@larksuiteoapi/node-sdk';
 import { normalize } from '@larksuiteoapi/node-sdk';
 import type { ApiMessageItem, RawMessageEvent } from '@larksuiteoapi/node-sdk';
 import { extractPromptFromContent } from './message-parse.js';

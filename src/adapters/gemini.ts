@@ -2,7 +2,9 @@
 import { spawnWithLifecycle } from './base.js';
 import type { Adapter, AdapterEvent, AdapterPreflight, RunContext } from './types.js';
 
-// Matches CSI/SGR ANSI escape sequences.
+// Matches CSI/SGR ANSI escape sequences. The \x1b control character is the
+// whole point here (ESC), so the lint rule is disabled deliberately.
+// eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 
 export function stripAnsi(s: string): string {

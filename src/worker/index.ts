@@ -1,6 +1,4 @@
 // SPDX-License-Identifier: MIT
-import { homedir } from 'node:os';
-import { resolve } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { paths } from '../config/paths.js';
 import { loadAllBots } from '../config/load.js';
@@ -40,12 +38,7 @@ import { sessionsHandler } from '../commands/handlers/sessions.js';
 import { makeReconnectHandler } from '../commands/handlers/reconnect.js';
 import { makeDoctorHandler } from '../commands/handlers/doctor.js';
 import { makeCardActionHandler } from './card-action-handler.js';
-
-function resolveCwd(value: string): string {
-  if (value === '~') return homedir();
-  if (value.startsWith('~/')) return resolve(homedir(), value.slice(2));
-  return resolve(value);
-}
+import { resolveCwd } from '../commands/cwd.js';
 
 export async function runWorker(botName: string): Promise<void> {
   const bots = await loadAllBots(paths.bots);
@@ -190,8 +183,9 @@ export async function runWorker(botName: string): Promise<void> {
     makeReconnectHandler(reconnector),
     makeDoctorHandler(adapter),
   ];
-  let router: CommandRouter;
-  router = new CommandRouter([
+  // The help handler closes over `router` lazily — it only dereferences it
+  // when /help runs, well after this initializer completes.
+  const router: CommandRouter = new CommandRouter([
     makeHelpHandler(() => router.list(true)),
     ...baseHandlers,
   ]);

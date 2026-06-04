@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { resolveCwd, validateCwd } from '../cwd.js';
 import type { CommandHandler } from '../types.js';
 
 export const cdHandler: CommandHandler = {
@@ -13,7 +12,12 @@ export const cdHandler: CommandHandler = {
       return;
     }
     const reset = ctx.args.includes('--new');
-    const cwd = path.startsWith('~') ? path.replace(/^~/, homedir()) : resolve(path);
+    const cwd = resolveCwd(path);
+    const invalid = await validateCwd(cwd);
+    if (invalid) {
+      await ctx.reply(invalid);
+      return;
+    }
     const existing = ctx.sessions.get(ctx.chatId, ctx.bot.name);
     if (existing) {
       await ctx.sessions.setCwd(ctx.chatId, ctx.bot.name, cwd, reset);

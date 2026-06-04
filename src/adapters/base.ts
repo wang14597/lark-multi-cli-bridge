@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { spawn, type ChildProcess, type SpawnOptionsWithoutStdio } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { readLines } from '../util/async-iter.js';
 
 export interface SpawnLifecycleOpts extends SpawnOptionsWithoutStdio {
@@ -96,6 +97,14 @@ export async function* spawnWithLifecycle(
     // ENOENT/EACCES paths land here with code=null after the 'error' event
     // fires; surface that first so the caller sees the real cause.
     if (spawnError) {
+      // Node reports a nonexistent cwd as "spawn <cmd> ENOENT" — identical
+      // to a missing binary. Disambiguate so a stale session cwd (deleted
+      // dir, mistyped /cd) doesn't masquerade as a missing CLI. Phrasing is
+      // kept in lock-step with validateCwd ("directory does not exist: …").
+      const cwd = spawnOpts.cwd;
+      if (cwd !== undefined && !existsSync(cwd)) {
+        throw new Error(`directory does not exist: ${String(cwd)} (failed to spawn ${cmd})`);
+      }
       throw new Error(`failed to spawn ${cmd}: ${spawnError.message}`);
     }
     if (signal.aborted) {

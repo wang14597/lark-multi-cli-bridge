@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import pino from 'pino';
 import { makeCardActionHandler } from '../../src/worker/card-action-handler.js';
 import type { CardActionEvent } from '../../src/lark/card-action.js';
+import type { DispatchRequest } from '../../src/worker/dispatcher.js';
 import type { IngressMessage } from '../../src/lark/types.js';
 import type { AccessConfig } from '../../src/config/schema.js';
 
@@ -12,10 +13,15 @@ function makeAccess(overrides: Partial<AccessConfig> = {}): AccessConfig {
   return { allowed_users: ['ou_alice'], allowed_chats: [], admins: [], ...overrides };
 }
 
+function makeMocks(abortResult = false) {
+  const enqueue = vi.fn(async (_req: DispatchRequest) => {});
+  const abort = vi.fn((_chatId: string) => abortResult);
+  return { enqueue, abort };
+}
+
 describe('makeCardActionHandler — __claude_cb branch', () => {
   it('enqueues a [card-click] message when value.__claude_cb is true', async () => {
-    const enqueue = vi.fn(async (_req: any) => {});
-    const abort = vi.fn(() => false);
+    const { enqueue, abort } = makeMocks();
     const lastIngressByChat = new Map<string, IngressMessage>();
     lastIngressByChat.set('oc_chat', {
       chatId: 'oc_chat',
@@ -31,14 +37,14 @@ describe('makeCardActionHandler — __claude_cb branch', () => {
 
     const handler = makeCardActionHandler({
       access: makeAccess(),
-      dispatcher: { enqueue, abort } as any,
+      dispatcher: { enqueue, abort },
       log: silentLog,
       lastIngressByChat,
       botDefaultCwd: '/tmp',
       botBackendType: 'claude',
       botName: 'claude-bot',
       idleTimeoutMs: 600_000,
-      sessions: { get: () => undefined, getForBot: () => undefined } as any,
+      sessions: { get: () => undefined },
     });
 
     const evt: CardActionEvent = {
@@ -58,17 +64,17 @@ describe('makeCardActionHandler — __claude_cb branch', () => {
   });
 
   it('drops the __claude_cb marker key from the synth prompt', async () => {
-    const enqueue = vi.fn(async (_req: any) => {});
+    const { enqueue, abort } = makeMocks();
     const handler = makeCardActionHandler({
       access: makeAccess(),
-      dispatcher: { enqueue, abort: vi.fn() } as any,
+      dispatcher: { enqueue, abort },
       log: silentLog,
       lastIngressByChat: new Map(),
       botDefaultCwd: '/tmp',
       botBackendType: 'claude',
       botName: 'claude-bot',
       idleTimeoutMs: 600_000,
-      sessions: { get: () => undefined, getForBot: () => undefined } as any,
+      sessions: { get: () => undefined },
     });
 
     await handler({
@@ -79,24 +85,23 @@ describe('makeCardActionHandler — __claude_cb branch', () => {
       receivedAt: '2026-06-01T00:00:01Z',
     });
 
-    const prompt = (enqueue.mock.calls[0]![0] as any).prompt;
+    const prompt = enqueue.mock.calls[0]![0].prompt;
     expect(prompt).toBe('[card-click] {"x":1,"y":"z"}');
     expect(prompt).not.toContain('__claude_cb');
   });
 
   it('still calls dispatcher.abort for value.cmd === "stop"', async () => {
-    const enqueue = vi.fn(async (_req: any) => {});
-    const abort = vi.fn(() => true);
+    const { enqueue, abort } = makeMocks(true);
     const handler = makeCardActionHandler({
       access: makeAccess(),
-      dispatcher: { enqueue, abort } as any,
+      dispatcher: { enqueue, abort },
       log: silentLog,
       lastIngressByChat: new Map(),
       botDefaultCwd: '/tmp',
       botBackendType: 'claude',
       botName: 'claude-bot',
       idleTimeoutMs: 600_000,
-      sessions: { get: () => undefined, getForBot: () => undefined } as any,
+      sessions: { get: () => undefined },
     });
 
     await handler({
@@ -113,18 +118,17 @@ describe('makeCardActionHandler — __claude_cb branch', () => {
   });
 
   it('drops events from unauthorized users', async () => {
-    const enqueue = vi.fn(async (_req: any) => {});
-    const abort = vi.fn();
+    const { enqueue, abort } = makeMocks();
     const handler = makeCardActionHandler({
       access: makeAccess({ allowed_users: ['ou_other'] }),
-      dispatcher: { enqueue, abort } as any,
+      dispatcher: { enqueue, abort },
       log: silentLog,
       lastIngressByChat: new Map(),
       botDefaultCwd: '/tmp',
       botBackendType: 'claude',
       botName: 'claude-bot',
       idleTimeoutMs: 600_000,
-      sessions: { get: () => undefined, getForBot: () => undefined } as any,
+      sessions: { get: () => undefined },
     });
 
     await handler({
@@ -141,18 +145,17 @@ describe('makeCardActionHandler — __claude_cb branch', () => {
 
   it('prefers __claude_cb over cmd when both are present', async () => {
     // If the LLM emits a button with both markers, the LLM wins.
-    const enqueue = vi.fn(async (_req: any) => {});
-    const abort = vi.fn();
+    const { enqueue, abort } = makeMocks();
     const handler = makeCardActionHandler({
       access: makeAccess(),
-      dispatcher: { enqueue, abort } as any,
+      dispatcher: { enqueue, abort },
       log: silentLog,
       lastIngressByChat: new Map(),
       botDefaultCwd: '/tmp',
       botBackendType: 'claude',
       botName: 'claude-bot',
       idleTimeoutMs: 600_000,
-      sessions: { get: () => undefined, getForBot: () => undefined } as any,
+      sessions: { get: () => undefined },
     });
 
     await handler({

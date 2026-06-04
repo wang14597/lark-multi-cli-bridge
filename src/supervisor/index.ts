@@ -29,11 +29,13 @@ export async function runSupervisor(): Promise<void> {
     delays: backoffDelays(),
   });
 
-  let watcher: BotsDirWatcher | undefined;
+  // Constructed up-front (side-effect-free until .start()) so teardown can
+  // reference it as a const; armed after mgr.start() below.
+  const watcher = new BotsDirWatcher(paths.bots);
 
   const teardown = async (): Promise<void> => {
     log.info('supervisor tearing down');
-    watcher?.stop();
+    watcher.stop();
     await mgr.stop();
     await ipc.stop();
     await writeJsonAtomic(paths.processesJson, { entries: [] }).catch(() => {});
@@ -70,7 +72,6 @@ export async function runSupervisor(): Promise<void> {
   await ipc.start();
   await mgr.start();
 
-  watcher = new BotsDirWatcher(paths.bots);
   let reloadTimer: NodeJS.Timeout | undefined;
   watcher.on('change', (filename: string) => {
     if (reloadTimer) clearTimeout(reloadTimer);
