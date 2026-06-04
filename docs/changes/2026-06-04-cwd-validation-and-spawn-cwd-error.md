@@ -32,8 +32,12 @@ that typo into a confusing failure:
     `worker/index.ts`); now single-sourced. `cd.ts` previously used a
     weaker `path.replace(/^~/, …)` that mishandled bare `~` vs `~abc`.
   - `validateCwd(cwd)` — async stat check returning a user-facing error
-    string (`directory does not exist: …` / `not a directory: …`) or
-    `undefined` when valid.
+    string or `undefined` when valid. Distinguishes the failure modes:
+    `directory does not exist: …` (ENOENT/ENOTDIR), `not a directory: …`
+    (path is a file), and `cannot access directory: … (<code>)` for
+    anything else (e.g. EACCES when a parent lacks the execute bit) —
+    reporting an unreadable-but-present path as "does not exist" would
+    repeat the very misdirection this change exists to remove.
 - `/cd` and `/new <path>` now call `validateCwd` after resolving and
   **reject without touching the session store** when the target is
   missing or not a directory.
@@ -54,9 +58,11 @@ that typo into a confusing failure:
 - `src/worker/index.ts` — local `resolveCwd` copy removed in favor of the
   shared one (behavior identical).
 - `src/adapters/base.ts` — bad-cwd spawn failures now name the real cause.
-- `tests/commands/cd.test.ts` — new: 6 tests covering reject-nonexistent,
-  reject-non-directory, accept-existing, `~` expansion, for both `/cd`
-  and `/new` (real `SessionStore` on a temp file, no mocks).
+- `tests/commands/cd.test.ts` — new: handler-level tests covering
+  reject-nonexistent, reject-non-directory, accept-existing, `~`
+  expansion, for both `/cd` and `/new` (real `SessionStore` on a temp
+  file, no mocks); plus direct `validateCwd` unit tests including the
+  EACCES-vs-ENOENT distinction (parent dir chmod `000`, skipped under root).
 - `tests/adapters/base.test.ts` — new regression test: nonexistent cwd
   must surface as `cwd does not exist: …`, distinct from missing binary.
 

@@ -29,9 +29,12 @@ slug: cwd-validation-and-spawn-cwd-error
     `cd.ts`、`new.ts`、`worker/index.ts` 三处复制粘贴，现在单一来源。
     `cd.ts` 原来用的是更弱的 `path.replace(/^~/, …)`，对裸 `~` 和
     `~abc` 处理有歧义。
-  - `validateCwd(cwd)`——异步 stat 检查，返回面向用户的错误文案
-    （`directory does not exist: …` / `not a directory: …`），合法时
-    返回 `undefined`。
+  - `validateCwd(cwd)`——异步 stat 检查，合法时返回 `undefined`，否则
+    按失败类型返回不同文案：`directory does not exist: …`
+    （ENOENT/ENOTDIR）、`not a directory: …`（路径是文件）、
+    `cannot access directory: … (<code>)`（其余情况，如父目录缺 x 位
+    导致的 EACCES）——把"存在但读不到"的路径报成"不存在"，正是这次
+    变更要消除的那种误导。
 - `/cd` 和 `/new <path>` 解析后先调 `validateCwd`，目标不存在或不是
   目录时**直接拒绝，完全不碰 session store**。
 - `spawnWithLifecycle`（`src/adapters/base.ts`）：spawn 失败时若传入了
@@ -49,9 +52,11 @@ slug: cwd-validation-and-spawn-cwd-error
 - `src/worker/index.ts` —— 删除本地 `resolveCwd` 副本，改用共享版
   （行为不变）。
 - `src/adapters/base.ts` —— 坏 cwd 导致的 spawn 失败现在指明真实原因。
-- `tests/commands/cd.test.ts` —— 新增：6 个测试覆盖拒绝不存在路径、
-  拒绝非目录、接受存在目录、`~` 展开，同时覆盖 `/cd` 和 `/new`
-  （真实 `SessionStore` + 临时文件，无 mock）。
+- `tests/commands/cd.test.ts` —— 新增：handler 层测试覆盖拒绝不存在
+  路径、拒绝非目录、接受存在目录、`~` 展开，同时覆盖 `/cd` 和 `/new`
+  （真实 `SessionStore` + 临时文件，无 mock）；外加直接针对
+  `validateCwd` 的单元测试，含 EACCES 与 ENOENT 的区分（父目录 chmod
+  `000`，root 下跳过）。
 - `tests/adapters/base.test.ts` —— 新增回归测试：cwd 不存在必须报
   `cwd does not exist: …`，与二进制缺失区分开。
 

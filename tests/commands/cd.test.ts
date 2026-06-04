@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { cdHandler } from '../../src/commands/handlers/cd.js';
 import { newHandler } from '../../src/commands/handlers/new.js';
+import { validateCwd } from '../../src/commands/cwd.js';
 import { SessionStore } from '../../src/session/store.js';
 import type { CommandCtx } from '../../src/commands/types.js';
 
@@ -82,5 +83,47 @@ describe('newHandler cwd validation', () => {
     await newHandler.run(ctx);
     expect(replies.join('\n')).toContain(dir);
     expect(store.get('oc_test', 'codex-bot')?.cwd).toBe(dir);
+  });
+});
+
+describe('validateCwd', () => {
+  it('returns "does not exist" for a missing directory', async () => {
+    const msg = await validateCwd('/definitely/does/not/exist/dir-xyzzy');
+    expect(msg).toMatch(/does not exist/i);
+  });
+
+  it('returns "not a directory" for a path that is a regular file', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lmcb-validate-'));
+    const filePath = join(dir, 'a-file.txt');
+    writeFileSync(filePath, 'x');
+    const msg = await validateCwd(filePath);
+    expect(msg).toMatch(/not a directory/i);
+  });
+
+  it('returns undefined for an existing directory', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lmcb-validate-'));
+    expect(await validateCwd(dir)).toBeUndefined();
+  });
+
+  it('reports a permission error distinctly from "does not exist"', async () => {
+    // A path whose parent directory lacks the execute (x) bit can't be
+    // stat'd — Node throws EACCES, not ENOENT. The old catch-all reported
+    // every stat failure as "does not exist", which is misleading: the
+    // directory may well exist, we just can't see it. Root bypasses the
+    // permission check, so skip there.
+    if (process.getuid?.() === 0) return;
+    const dir = mkdtempSync(join(tmpdir(), 'lmcb-validate-'));
+    const locked = join(dir, 'locked');
+    mkdirSync(locked);
+    const child = join(locked, 'child');
+    chmodSync(locked, 0o000);
+    try {
+      const msg = await validateCwd(child);
+      expect(msg).toBeDefined();
+      expect(msg).not.toMatch(/does not exist/i);
+      expect(msg).toMatch(/EACCES|cannot access|permission/i);
+    } finally {
+      chmodSync(locked, 0o755);
+    }
   });
 });

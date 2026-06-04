@@ -23,7 +23,16 @@ export async function validateCwd(cwd: string): Promise<string | undefined> {
   try {
     const s = await stat(cwd);
     return s.isDirectory() ? undefined : `not a directory: ${cwd}`;
-  } catch {
-    return `directory does not exist: ${cwd}`;
+  } catch (err) {
+    // ENOENT (path absent) and ENOTDIR (a parent component isn't a
+    // directory) genuinely mean "not there". Anything else — most commonly
+    // EACCES when a parent lacks the execute bit — means the path may well
+    // exist but we can't see it; reporting "does not exist" would repeat the
+    // very misdirection this validation exists to prevent, so surface the code.
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') {
+      return `directory does not exist: ${cwd}`;
+    }
+    return `cannot access directory: ${cwd} (${code ?? 'unknown error'})`;
   }
 }
