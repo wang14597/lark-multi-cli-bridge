@@ -67,9 +67,10 @@ that typo into a confusing failure:
   message), then pass after implementation.
 - `pnpm typecheck` — clean.
 - `pnpm test` — 42 files, 252 tests, all green.
-- `pnpm lint` — fails with 34 pre-existing problems in untouched files
+- `pnpm lint` — failed with 34 pre-existing problems in untouched files
   (already failing on `main` before this change; none in files this
-  change touches). Tracked as separate cleanup.
+  change touches). Cleaned up in a follow-up lint-only commit on the
+  same branch; lint is green at branch tip.
 - Root-cause reproduction: `spawn('codex', …, {cwd: '/Downloads/…'})`
   confirmed to emit `spawn codex ENOENT` on Node 24.
 

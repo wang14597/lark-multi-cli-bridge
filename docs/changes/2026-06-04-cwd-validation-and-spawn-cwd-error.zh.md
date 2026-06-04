@@ -61,8 +61,9 @@ slug: cwd-validation-and-spawn-cwd-error
   坏路径；base.ts 抛通用报错），实现后转绿。
 - `pnpm typecheck` —— 通过。
 - `pnpm test` —— 42 个文件、252 个测试全绿。
-- `pnpm lint` —— 34 个存量问题（本次变更前 `main` 上已失败；全部位于
-  本次未触碰的文件）。另行清理。
+- `pnpm lint` —— 曾有 34 个存量问题（本次变更前 `main` 上已失败；全部
+  位于本次未触碰的文件）。已在同分支的后续 lint-only 提交中清理完毕，
+  分支顶端 lint 全绿。
 - 根因复现：Node 24 下 `spawn('codex', …, {cwd: '/Downloads/…'})`
   确认报 `spawn codex ENOENT`。
 

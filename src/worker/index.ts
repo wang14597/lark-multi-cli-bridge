@@ -183,8 +183,9 @@ export async function runWorker(botName: string): Promise<void> {
     makeReconnectHandler(reconnector),
     makeDoctorHandler(adapter),
   ];
-  let router: CommandRouter;
-  router = new CommandRouter([
+  // The help handler closes over `router` lazily — it only dereferences it
+  // when /help runs, well after this initializer completes.
+  const router: CommandRouter = new CommandRouter([
     makeHelpHandler(() => router.list(true)),
     ...baseHandlers,
   ]);
