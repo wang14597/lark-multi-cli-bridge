@@ -64,7 +64,7 @@ the env vars are recognised but never mint a usable bot token.
 | `cli/` | `lmcb` entrypoint; routes subcommands through the Unix socket to the supervisor |
 | `supervisor/` | Worker fork/respawn, IPC server, crash budget, log aggregation |
 | `worker/` | Single-bot lifecycle: Lark events → dispatcher → adapter → streaming card |
-| `lark/` | Lark SDK wrapper: WebSocket, message parsing, `card-builder.ts`, `run-state.ts`, `tool-render.ts`, attachment download |
+| `lark/` | Lark SDK wrapper: WebSocket, message parsing, `card-builder.ts`, `markdown-normalize.ts`, `run-state.ts`, `tool-render.ts`, attachment download |
 | `adapters/` | `ClaudeAdapter` / `CodexAdapter` / `GeminiAdapter` implementing `AsyncIterable<AdapterEvent>` |
 | `commands/` | Slash-command router and handlers (11 commands) |
 | `session/` | `SessionStore` + `WorkspaceStore` with atomic file persistence |
@@ -93,7 +93,8 @@ Notable v0.4.0 additions inside `src/lark/`:
 
 - **`run-state.ts`** — `RunState` data model + mutation helpers (tracks blocks, reasoning, tools, terminal flag, footer text).
 - **`tool-render.ts`** — `toolHeaderText` / `toolBodyMd` helpers; `toolHeaderText` is the canonical single-line `✅ **Tool** — summary` format reused by the blockquote rendering path.
-- **`card-builder.ts`** — `renderRunCard` builds the streaming card: no header bar, `streaming_mode` toggle, collapsible reasoning panel, **blockquote-based tool list** (see "Tool-call rendering" below), footer status, terminal-state note, stop button.
+- **`card-builder.ts`** — `renderRunCard` builds the streaming card: no header bar, `streaming_mode` toggle, collapsible reasoning panel, **blockquote-based tool list** (see "Tool-call rendering" below), footer status, terminal-state note, stop button. Answer text groups are run through `normalizeMarkdown` before emission.
+- **`markdown-normalize.ts`** — `normalizeMarkdown(md)`: re-inserts the blank lines Lark's `markdown` widget needs to separate block-level pieces (around headings/lists/quotes/code fences, between prose lines), so dense single-newline agent output (esp. codex) doesn't collapse into a wall. Passes fenced code verbatim, keeps table rows tight, collapses blank runs, idempotent.
 
 ## Adapter event stream
 

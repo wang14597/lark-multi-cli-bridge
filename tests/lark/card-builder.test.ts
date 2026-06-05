@@ -17,6 +17,18 @@ describe('renderRunCard', () => {
     expect(json).not.toContain('"template"');
   });
 
+  it('normalizes dense single-newline text into separated paragraphs', () => {
+    const s = createRunState();
+    // codex-style dense output: labeled lines joined by single newlines.
+    appendText(s, '证据：foo\n影响：bar');
+    finalize(s, { kind: 'done' });
+    const card = renderRunCard(s);
+    const md = (card.body as { elements: Array<{ tag: string; content?: string }> }).elements.find(
+      (e) => e.tag === 'markdown' && e.content?.includes('证据'),
+    );
+    expect(md?.content).toBe('证据：foo\n\n影响：bar');
+  });
+
   it('done state: no stop button, summary says 已完成', () => {
     const s = createRunState();
     appendText(s, 'Hi');
