@@ -75,6 +75,10 @@ Active development. **v0.7.1 released**; an `[Unreleased]` batch covering quote-
 
 Tested manually with Lark on macOS. Linux works for foreground mode; the launchd daemon is macOS-only (systemd unit generation is deferred).
 
+## Acknowledgements
+
+This project was inspired by and builds on [zarazhangrui/lark-coding-agent-bridge](https://github.com/zarazhangrui/lark-coding-agent-bridge) — a lightweight bot bridging Feishu/Lark with a local Claude Code / Codex CLI. `lark-multi-cli-bridge` extends that idea to **multiple CLI backends** (Claude Code / OpenAI Codex / Google Gemini) running as separate bots under one supervisor. Many thanks to the original author for the groundwork.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

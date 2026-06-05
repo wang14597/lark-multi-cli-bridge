@@ -74,6 +74,10 @@ node ./bin/lmcb.mjs start --foreground
 
 在 macOS 上完成人工测试。Linux 支持前台运行；launchd 守护进程仅限 macOS（systemd unit 生成延后）。
 
+## 致谢
+
+本项目借鉴并参考了 [zarazhangrui/lark-coding-agent-bridge](https://github.com/zarazhangrui/lark-coding-agent-bridge)——一个把飞书 / Lark 桥接到本地 Claude Code / Codex CLI 的轻量 bot。`lark-multi-cli-bridge` 在其思路上扩展为**多 CLI 后端**（Claude Code / OpenAI Codex / Google Gemini），由一个 supervisor 统一管理多个 bot。感谢原作者打下的基础。
+
 ## 许可
 
 MIT。见 [LICENSE](LICENSE)。
