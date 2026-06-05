@@ -49,11 +49,15 @@ export class SessionStore {
     const chatSlot = (this.data.chats[chatId] ??= {});
     const existing = chatSlot[patch.bot];
     const sessionId = patch.sessionId ?? existing?.sessionId;
+    // Preserve a per-chat /timeout override across upserts unless the caller
+    // explicitly sets a new one — it's a chat preference, not per-session-id.
+    const idleTimeoutMs = patch.idleTimeoutMs ?? existing?.idleTimeoutMs;
     const next: ChatSession = {
       backend: patch.backend,
       bot: patch.bot,
       cwd: patch.cwd,
       ...(sessionId !== undefined ? { sessionId } : {}),
+      ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
       lastUsedAt: new Date().toISOString(),
       messageCount: (existing?.messageCount ?? 0) + 1,
     };
@@ -95,6 +99,27 @@ export class SessionStore {
         lastUsedAt: new Date().toISOString(),
       };
     }
+    await this.persist();
+  }
+
+  /**
+   * Set (or clear) the per-chat idle-timeout override for a slot. Pass
+   * `undefined` to clear it and fall back to the bot default. Throws if the
+   * slot doesn't exist yet — callers should upsert first.
+   */
+  async setIdleTimeout(
+    chatId: string,
+    botName: string,
+    ms: number | undefined,
+  ): Promise<void> {
+    const existing = this.data.chats[chatId]?.[botName];
+    if (!existing) throw new Error(`chat not initialized: ${chatId} / ${botName}`);
+    const { idleTimeoutMs: _drop, ...rest } = existing;
+    this.data.chats[chatId]![botName] = {
+      ...rest,
+      ...(ms !== undefined ? { idleTimeoutMs: ms } : {}),
+      lastUsedAt: new Date().toISOString(),
+    };
     await this.persist();
   }
 

@@ -38,6 +38,7 @@ import { sessionsHandler } from '../commands/handlers/sessions.js';
 import { makeReconnectHandler } from '../commands/handlers/reconnect.js';
 import { makeDoctorHandler } from '../commands/handlers/doctor.js';
 import { makeCardActionHandler } from './card-action-handler.js';
+import { makeDispatchCommand, type ChatReplies } from './dispatch-command.js';
 import { resolveCwd } from '../commands/cwd.js';
 
 export async function runWorker(botName: string): Promise<void> {
@@ -145,6 +146,23 @@ export async function runWorker(botName: string): Promise<void> {
 
   const lastIngressByChat = new Map<string, IngressMessage>();
 
+  // Reply closures targeting a given chat. Shared by the typed-message path
+  // and the card-button path so both send through the identical SDK call.
+  const makeReplies = (chatId: string): ChatReplies => ({
+    reply: async (text) => {
+      await client.im.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: { receive_id: chatId, msg_type: 'text', content: JSON.stringify({ text }) },
+      });
+    },
+    replyCard: async (card) => {
+      await client.im.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: { receive_id: chatId, msg_type: 'interactive', content: JSON.stringify(card) },
+      });
+    },
+  });
+
   const dispatcher = new Dispatcher({
     adapter,
     makeStreamer: (chatId, replyTo) =>
@@ -168,6 +186,9 @@ export async function runWorker(botName: string): Promise<void> {
       if (!last) return prompt;
       return `${buildBridgeContext(last)}\n\n${prompt}`;
     },
+    // Per-chat idle-timeout override set by /timeout, persisted on the
+    // session slot. Falls through to the request's bot-default when unset.
+    resolveIdleTimeoutMs: (chatId) => sessions.get(chatId, bot.name)?.idleTimeoutMs,
     extraEnv: larkCliEnv,
   });
 
@@ -190,6 +211,20 @@ export async function runWorker(botName: string): Promise<void> {
     ...baseHandlers,
   ]);
 
+  // Run an internal command on behalf of a card-button click, through the same
+  // router the typed `/command` path uses. Reply/replyCard target the click's
+  // chat; admin status is recomputed from the clicker's open_id; a failure
+  // surfaces a best-effort fallback reply instead of a dead button.
+  const dispatchCommand = makeDispatchCommand({
+    router,
+    bot,
+    sessions,
+    workspaces,
+    makeReplies,
+    log,
+    ...(appOwnerOpenId ? { appOwnerOpenId } : {}),
+  });
+
   ws.on('card-action', makeCardActionHandler({
     access: bot.access,
     dispatcher,
@@ -200,6 +235,7 @@ export async function runWorker(botName: string): Promise<void> {
     botBackendType: bot.backend.type,
     botName: bot.name,
     idleTimeoutMs: bot.behavior.idle_timeout_seconds * 1000,
+    dispatchCommand,
     ...(appOwnerOpenId ? { appOwnerOpenId } : {}),
   }));
 
@@ -213,18 +249,7 @@ export async function runWorker(botName: string): Promise<void> {
       return;
     }
     const admin = isAdmin({ access: bot.access, senderOpenId: msg.senderOpenId, ...(appOwnerOpenId ? { appOwnerOpenId } : {}) });
-    const replyText = async (text: string): Promise<void> => {
-      await client.im.message.create({
-        params: { receive_id_type: 'chat_id' },
-        data: { receive_id: msg.chatId, msg_type: 'text', content: JSON.stringify({ text }) },
-      });
-    };
-    const replyCard = async (card: unknown): Promise<void> => {
-      await client.im.message.create({
-        params: { receive_id_type: 'chat_id' },
-        data: { receive_id: msg.chatId, msg_type: 'interactive', content: JSON.stringify(card) },
-      });
-    };
+    const { reply: replyText, replyCard } = makeReplies(msg.chatId);
     const handled = await router.dispatch(msg.text, {
       chatId: msg.chatId,
       senderOpenId: msg.senderOpenId,

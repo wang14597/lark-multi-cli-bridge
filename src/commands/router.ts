@@ -29,6 +29,17 @@ export class CommandRouter {
   async dispatch(text: string, ctx: Omit<CommandCtx, 'args'>): Promise<boolean> {
     const parsed = parseSlashCommand(text);
     if (!parsed) return false;
+    return this.dispatchParsed(parsed, ctx);
+  }
+
+  /**
+   * Run an already-parsed command. Use this when the command name + args are
+   * known structurally (e.g. a card-button click carrying `value.name`) so a
+   * name with whitespace is never lossily re-split through `parseSlashCommand`.
+   * Returns true once a command was consumed (handled, rejected as unknown, or
+   * blocked as admin-only).
+   */
+  async dispatchParsed(parsed: ParsedCommand, ctx: Omit<CommandCtx, 'args'>): Promise<boolean> {
     const handler = this.handlers.get(parsed.name);
     if (!handler) {
       await ctx.reply(`unknown command: /${parsed.name}`);

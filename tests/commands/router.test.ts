@@ -29,4 +29,20 @@ describe('CommandRouter', () => {
     expect(seen).toEqual(['foo:a,b']);
     expect(replies.some((r) => r.includes('unknown'))).toBe(true);
   });
+
+  it('dispatchParsed runs an already-parsed command without re-splitting args', async () => {
+    const seen: string[][] = [];
+    const router = new CommandRouter([
+      { name: 'ws', description: '', run: async (c) => void seen.push(c.args) },
+    ]);
+    const ctx = {
+      chatId: 'oc_x', senderOpenId: 'ou_x', isAdmin: false,
+      bot: {} as CommandCtx['bot'], sessions: {} as CommandCtx['sessions'], workspaces: {} as CommandCtx['workspaces'],
+      reply: async () => {},
+    };
+    // A whitespace-bearing arg stays whole — the exact bug a slash round-trip
+    // would have introduced.
+    await router.dispatchParsed({ name: 'ws', args: ['use', 'foo bar'] }, ctx);
+    expect(seen).toEqual([['use', 'foo bar']]);
+  });
 });

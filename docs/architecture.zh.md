@@ -93,7 +93,11 @@ v0.4.0 在 `src/lark/` 中新增的关键文件：
 
 ## 适配器事件流
 
-卡片按钮点击（如 ⏹）通过 Lark 的 `card.action.trigger` 事件下发，由 `src/lark/card-action.ts` 解析后路由到 `dispatcher.abort(chatId)`。`LarkWsClient` 会发出一个类型化的 `'card-action'` 事件，worker 在经过与入站消息相同的访问控制检查后进行消费。
+卡片按钮点击通过 Lark 的 `card.action.trigger` 事件下发，由 `src/lark/card-action.ts` 解析后，在经过与入站消息相同的访问控制检查后，交给 `makeCardActionHandler`（`src/worker/card-action-handler.ts`）处理。handler 分三个优先级：
+
+1. **LLM 回调**（`value.__claude_cb === true`）——以合成的 `[card-click] {…}` prompt 续上 LLM 会话（marker 已剥离）。
+2. **运行中停止**（`value.cmd === 'stop'`）——直接调用 `dispatcher.abort(chatId)`；必须在流式过程中也能生效。
+3. **内部命令按钮**（`new` / `status` / `help` / `ws.list` / `ws.use` / `ws.remove`）——`cmdToCommand` 把按钮的 `cmd` 翻译成**结构化** `{ name, args }`（如 `ws.use` + `value.name` → `{ name: 'ws', args: ['use', <name>] }`），再由 worker 注入的 `dispatchCommand`（由 `src/worker/dispatch-command.ts` 的 `makeDispatchCommand` 构建）通过 `router.dispatchParsed` 走**与键入 `/command` 完全相同的 `CommandRouter`** 执行，`reply`/`replyCard` 指向点击所在的 chat，admin 身份按点击者的 `open_id` 重新计算。因此「点按钮」和「键入命令」共用一份实现。以结构化方式承载命令（而非再序列化成 slash 字符串），含空白字符的工作空间名才能命中精确目标，而不是被截断成前缀。`dispatchCommand` 内部出错时会发一条尽力而为的 `⚠️ command failed: …` 兜底回复，而不是变成静默的「死按钮」。未知 `cmd`（或未接 `dispatchCommand`）则记日志后空操作。
 
 所有适配器通过 `run(ctx)` 暴露 `AsyncIterable<AdapterEvent>`。判别联合类型共有 **7 个变体**：
 
@@ -159,7 +163,7 @@ Worker 的 `Dispatcher` 把事件喂给 `CardStreamer`，后者以 500 ms 或 50
 ~/.lark-multi-cli-bridge/
 ├── config.yaml                         （全局配置）
 ├── bots/<name>.yaml                    （per-bot 配置，chmod 600）
-├── state/sessions.json                 （原子写）
+├── state/sessions.json                 （原子写；按 (chatId,botName)：backend/cwd/sessionId/messageCount + 可选 idleTimeoutMs，即 /timeout 覆盖值）
 ├── state/workspaces.json
 ├── state/processes.json
 ├── logs/supervisor.log
