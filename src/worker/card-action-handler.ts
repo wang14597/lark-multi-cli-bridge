@@ -5,6 +5,7 @@ import type { Dispatcher } from './dispatcher.js';
 import type { IngressMessage } from '../lark/types.js';
 import type { AccessConfig } from '../config/schema.js';
 import type { SessionStore } from '../session/store.js';
+import type { ParsedCommand } from '../commands/router.js';
 import { isAuthorized } from '../auth/access-control.js';
 
 export interface CardActionHandlerDeps {
@@ -19,44 +20,49 @@ export interface CardActionHandlerDeps {
   idleTimeoutMs: number;
   appOwnerOpenId?: string;
   /**
-   * Run an internal slash command on behalf of a card button click. Wired in
+   * Run an internal command on behalf of a card button click. Wired in
    * worker/index.ts to dispatch through the same CommandRouter the typed
    * `/command` path uses, with reply/replyCard targeting the click's chat.
-   * Optional so unit tests exercising the __claude_cb / stop paths don't have
-   * to provide it.
+   * Receives an already-parsed `{ name, args }` so a workspace name carrying
+   * whitespace survives intact (no slash-string re-split). Optional so unit
+   * tests exercising the __claude_cb / stop paths don't have to provide it.
    */
   dispatchCommand?: (
-    slashText: string,
+    cmd: ParsedCommand,
     meta: { chatId: string; operatorOpenId: string },
   ) => Promise<void>;
 }
 
 /**
  * Translate an internal card `cmd` (the `value.cmd` set by command-cards.ts
- * buttons) into the equivalent slash-command text. Returns undefined for
+ * buttons) into a structured `{ name, args }` command. Returns undefined for
  * commands not routed this way (e.g. `stop`, handled inline) or for malformed
  * values (e.g. `ws.use` without a name).
+ *
+ * The free-form `value.name` is carried as a single discrete arg — never
+ * spliced into a space-joined string — so names with whitespace/newlines
+ * route to the exact workspace the card showed, not a truncated prefix.
  */
-export function cmdToSlash(
+export function cmdToCommand(
   cmd: string | undefined,
   value: Record<string, unknown>,
-): string | undefined {
+): ParsedCommand | undefined {
   switch (cmd) {
     case 'new':
-      return '/new';
+      return { name: 'new', args: [] };
     case 'status':
-      return '/status';
+      return { name: 'status', args: [] };
     case 'help':
-      return '/help';
+      return { name: 'help', args: [] };
     case 'ws.list':
-      return '/ws list';
+      return { name: 'ws', args: ['list'] };
     case 'ws.use': {
       const name = typeof value['name'] === 'string' ? value['name'] : undefined;
-      return name ? `/ws use ${name}` : undefined;
+      return name ? { name: 'ws', args: ['use', name] } : undefined;
     }
     case 'ws.remove': {
       const name = typeof value['name'] === 'string' ? value['name'] : undefined;
-      return name ? `/ws remove ${name}` : undefined;
+      return name ? { name: 'ws', args: ['remove', name] } : undefined;
     }
     default:
       return undefined;
@@ -121,11 +127,14 @@ export function makeCardActionHandler(deps: CardActionHandlerDeps): (act: CardAc
     // routes through the same CommandRouter the typed `/command` path uses,
     // so a click and a typed command share one implementation. Without
     // dispatchCommand wired (or for an unknown cmd) the click is a no-op.
-    const slash = cmdToSlash(act.cmd, act.value);
-    if (slash !== undefined && dispatchCommand !== undefined) {
-      log.info({ chatId: act.chatId, cmd: act.cmd, slash }, 'card-action: internal cmd -> dispatch');
+    const command = cmdToCommand(act.cmd, act.value);
+    if (command !== undefined && dispatchCommand !== undefined) {
+      log.info({ chatId: act.chatId, cmd: act.cmd, command }, 'card-action: internal cmd -> dispatch');
+      // dispatchCommand owns the user-visible failure path (best-effort
+      // fallback reply); this catch is the last-resort net so a thrown
+      // rejection can never escape into the WS event loop.
       try {
-        await dispatchCommand(slash, { chatId: act.chatId, operatorOpenId: act.operatorOpenId });
+        await dispatchCommand(command, { chatId: act.chatId, operatorOpenId: act.operatorOpenId });
       } catch (err) {
         log.error({ err: (err as Error).message, cmd: act.cmd }, 'card-action dispatch failed');
       }

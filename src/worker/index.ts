@@ -38,6 +38,7 @@ import { sessionsHandler } from '../commands/handlers/sessions.js';
 import { makeReconnectHandler } from '../commands/handlers/reconnect.js';
 import { makeDoctorHandler } from '../commands/handlers/doctor.js';
 import { makeCardActionHandler } from './card-action-handler.js';
+import { makeDispatchCommand } from './dispatch-command.js';
 import { resolveCwd } from '../commands/cwd.js';
 
 export async function runWorker(botName: string): Promise<void> {
@@ -213,30 +214,19 @@ export async function runWorker(botName: string): Promise<void> {
     ...baseHandlers,
   ]);
 
-  // Run an internal slash command on behalf of a card-button click, through
-  // the same router the typed `/command` path uses. Reply/replyCard target the
-  // click's chat; admin status is recomputed from the clicker's open_id.
-  const dispatchCommand = async (
-    slashText: string,
-    meta: { chatId: string; operatorOpenId: string },
-  ): Promise<void> => {
-    const admin = isAdmin({
-      access: bot.access,
-      senderOpenId: meta.operatorOpenId,
-      ...(appOwnerOpenId ? { appOwnerOpenId } : {}),
-    });
-    const { reply, replyCard } = makeReplies(meta.chatId);
-    await router.dispatch(slashText, {
-      chatId: meta.chatId,
-      senderOpenId: meta.operatorOpenId,
-      isAdmin: admin,
-      bot,
-      sessions,
-      workspaces,
-      reply,
-      replyCard,
-    });
-  };
+  // Run an internal command on behalf of a card-button click, through the same
+  // router the typed `/command` path uses. Reply/replyCard target the click's
+  // chat; admin status is recomputed from the clicker's open_id; a failure
+  // surfaces a best-effort fallback reply instead of a dead button.
+  const dispatchCommand = makeDispatchCommand({
+    router,
+    bot,
+    sessions,
+    workspaces,
+    makeReplies,
+    log,
+    ...(appOwnerOpenId ? { appOwnerOpenId } : {}),
+  });
 
   ws.on('card-action', makeCardActionHandler({
     access: bot.access,

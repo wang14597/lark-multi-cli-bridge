@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 import { describe, it, expect, vi } from 'vitest';
 import pino from 'pino';
-import { makeCardActionHandler, cmdToSlash } from '../../src/worker/card-action-handler.js';
+import { makeCardActionHandler, cmdToCommand } from '../../src/worker/card-action-handler.js';
 import type { CardActionEvent } from '../../src/lark/card-action.js';
 import type { DispatchRequest } from '../../src/worker/dispatcher.js';
 import type { IngressMessage } from '../../src/lark/types.js';
@@ -172,28 +172,45 @@ describe('makeCardActionHandler — __claude_cb branch', () => {
   });
 });
 
-describe('cmdToSlash', () => {
-  it('maps plain command buttons to slash text', () => {
-    expect(cmdToSlash('new', {})).toBe('/new');
-    expect(cmdToSlash('status', {})).toBe('/status');
-    expect(cmdToSlash('help', {})).toBe('/help');
-    expect(cmdToSlash('ws.list', {})).toBe('/ws list');
+describe('cmdToCommand', () => {
+  it('maps plain command buttons to structured commands', () => {
+    expect(cmdToCommand('new', {})).toEqual({ name: 'new', args: [] });
+    expect(cmdToCommand('status', {})).toEqual({ name: 'status', args: [] });
+    expect(cmdToCommand('help', {})).toEqual({ name: 'help', args: [] });
+    expect(cmdToCommand('ws.list', {})).toEqual({ name: 'ws', args: ['list'] });
   });
 
-  it('threads value.name into ws.use / ws.remove', () => {
-    expect(cmdToSlash('ws.use', { name: 'proj' })).toBe('/ws use proj');
-    expect(cmdToSlash('ws.remove', { name: 'proj' })).toBe('/ws remove proj');
+  it('threads value.name into ws.use / ws.remove as a discrete arg', () => {
+    expect(cmdToCommand('ws.use', { name: 'proj' })).toEqual({ name: 'ws', args: ['use', 'proj'] });
+    expect(cmdToCommand('ws.remove', { name: 'proj' })).toEqual({
+      name: 'ws',
+      args: ['remove', 'proj'],
+    });
+  });
+
+  it('keeps a workspace name with whitespace intact (no slash re-split)', () => {
+    // Regression: a name like "foo bar" must survive as ONE arg, not split
+    // into ['foo', 'bar'] — otherwise the click resolves to the wrong (or a
+    // truncated-prefix) workspace.
+    expect(cmdToCommand('ws.use', { name: 'foo bar' })).toEqual({
+      name: 'ws',
+      args: ['use', 'foo bar'],
+    });
+    expect(cmdToCommand('ws.remove', { name: 'a\nb' })).toEqual({
+      name: 'ws',
+      args: ['remove', 'a\nb'],
+    });
   });
 
   it('returns undefined for ws.* without a name', () => {
-    expect(cmdToSlash('ws.use', {})).toBeUndefined();
-    expect(cmdToSlash('ws.remove', { name: 42 })).toBeUndefined();
+    expect(cmdToCommand('ws.use', {})).toBeUndefined();
+    expect(cmdToCommand('ws.remove', { name: 42 })).toBeUndefined();
   });
 
   it('returns undefined for stop (handled inline) and unknown cmds', () => {
-    expect(cmdToSlash('stop', {})).toBeUndefined();
-    expect(cmdToSlash('bogus', {})).toBeUndefined();
-    expect(cmdToSlash(undefined, {})).toBeUndefined();
+    expect(cmdToCommand('stop', {})).toBeUndefined();
+    expect(cmdToCommand('bogus', {})).toBeUndefined();
+    expect(cmdToCommand(undefined, {})).toBeUndefined();
   });
 });
 
@@ -226,25 +243,35 @@ describe('makeCardActionHandler — internal cmd routing', () => {
     };
   }
 
-  it('routes the 新会话 button (cmd:new) to /new', async () => {
+  it('routes the 新会话 button (cmd:new) to the new command', async () => {
     const dispatchCommand = vi.fn(async () => {});
     const { handler, enqueue } = makeHandler(dispatchCommand);
     await handler(evt('new', {}));
-    expect(dispatchCommand).toHaveBeenCalledWith('/new', {
-      chatId: 'oc_chat',
-      operatorOpenId: 'ou_alice',
-    });
+    expect(dispatchCommand).toHaveBeenCalledWith(
+      { name: 'new', args: [] },
+      { chatId: 'oc_chat', operatorOpenId: 'ou_alice' },
+    );
     expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it('routes ws.use with a name to /ws use <name>', async () => {
+  it('routes ws.use with a name as structured args', async () => {
     const dispatchCommand = vi.fn(async () => {});
     const { handler } = makeHandler(dispatchCommand);
     await handler(evt('ws.use', { name: 'proj' }));
-    expect(dispatchCommand).toHaveBeenCalledWith('/ws use proj', {
-      chatId: 'oc_chat',
-      operatorOpenId: 'ou_alice',
-    });
+    expect(dispatchCommand).toHaveBeenCalledWith(
+      { name: 'ws', args: ['use', 'proj'] },
+      { chatId: 'oc_chat', operatorOpenId: 'ou_alice' },
+    );
+  });
+
+  it('routes a whitespace workspace name as a single arg', async () => {
+    const dispatchCommand = vi.fn(async () => {});
+    const { handler } = makeHandler(dispatchCommand);
+    await handler(evt('ws.use', { name: 'foo bar' }));
+    expect(dispatchCommand).toHaveBeenCalledWith(
+      { name: 'ws', args: ['use', 'foo bar'] },
+      { chatId: 'oc_chat', operatorOpenId: 'ou_alice' },
+    );
   });
 
   it('does not dispatch an unknown cmd', async () => {
@@ -261,7 +288,10 @@ describe('makeCardActionHandler — internal cmd routing', () => {
     expect(abort).not.toHaveBeenCalled();
   });
 
-  it('swallows a dispatchCommand rejection without throwing', async () => {
+  it('never lets a dispatchCommand rejection escape into the event loop', async () => {
+    // The real dispatchCommand (makeDispatchCommand) owns the user-visible
+    // fallback reply; this last-resort catch only guarantees the handler
+    // itself never throws even if dispatchCommand somehow does.
     const dispatchCommand = vi.fn(async () => {
       throw new Error('send failed');
     });
