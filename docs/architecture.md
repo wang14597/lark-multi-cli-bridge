@@ -97,7 +97,11 @@ Notable v0.4.0 additions inside `src/lark/`:
 
 ## Adapter event stream
 
-Card button clicks (e.g. ⏹) are dispatched via Lark's `card.action.trigger` event, parsed by `src/lark/card-action.ts`, and routed to `dispatcher.abort(chatId)`. The `LarkWsClient` emits a typed `'card-action'` event that the worker consumes after performing the same access-control check as inbound messages.
+Card button clicks are dispatched via Lark's `card.action.trigger` event, parsed by `src/lark/card-action.ts`, and handled by `makeCardActionHandler` (`src/worker/card-action-handler.ts`) after the same access-control check as inbound messages. The handler has three priorities:
+
+1. **LLM callback** (`value.__claude_cb === true`) — re-enters the LLM session with a synthetic `[card-click] {…}` prompt (marker stripped).
+2. **Live-run stop** (`value.cmd === 'stop'`) — calls `dispatcher.abort(chatId)` directly; must work mid-stream.
+3. **Internal command buttons** (`new` / `status` / `help` / `ws.list` / `ws.use` / `ws.remove`) — `cmdToSlash` maps the button's `cmd` to the equivalent slash text (e.g. `ws.use` + `value.name` → `/ws use <name>`), and the worker-supplied `dispatchCommand` runs it through the **same `CommandRouter`** the typed `/command` path uses, with `reply`/`replyCard` targeting the click's chat and admin status recomputed from the clicker's `open_id`. A click and a typed command therefore share one implementation. Unknown `cmd`s (or a missing `dispatchCommand`) are a logged no-op.
 
 All adapters expose `AsyncIterable<AdapterEvent>` over `run(ctx)`. The discriminated union has **7 variants**:
 
@@ -163,7 +167,7 @@ Tool detail (full input + output) is intentionally not surfaced in the card — 
 ~/.lark-multi-cli-bridge/
 ├── config.yaml                         (global config)
 ├── bots/<name>.yaml                    (per-bot config, chmod 600)
-├── state/sessions.json                 (atomic writes)
+├── state/sessions.json                 (atomic writes; per (chatId,botName): backend/cwd/sessionId/messageCount + optional idleTimeoutMs /timeout override)
 ├── state/workspaces.json
 ├── state/processes.json
 ├── logs/supervisor.log

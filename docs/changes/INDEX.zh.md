@@ -7,6 +7,8 @@ English: [INDEX.md](INDEX.md)
 
 | 日期 | 类型 | 变更 | 摘要 |
 |------|------|------|------|
+| 2026-06-05 | fix | [card-action-command-routing](2026-06-05-card-action-command-routing.zh.md) | 卡片按钮 `new` / `status` / `help` / `ws.list` / `ws.use` / `ws.remove` 全是死的空操作——`makeCardActionHandler` 只实现了 `stop`。新增 `cmdToSlash` + 注入的 `dispatchCommand`，让点击走与键入命令相同的 `CommandRouter`；回复闭包抽成共享的 `makeReplies(chatId)`。 |
+| 2026-06-05 | fix | [timeout-override-wiring](2026-06-05-timeout-override-wiring.zh.md) | `/timeout <seconds>` 只回执却从不生效——handler 没持久化，`Dispatcher` 构造时也没传 `resolveIdleTimeoutMs`。现持久化为 `ChatSession.idleTimeoutMs`（`/new` + `/cd` 后存活），经新增的 `SessionStore.setIdleTimeout`，dispatcher 按 chat 读取。 |
 | 2026-06-04 | fix | [cwd-validation-and-spawn-cwd-error](2026-06-04-cwd-validation-and-spawn-cwd-error.zh.md) | `/cd` 和 `/new <path>` 落盘前先 stat 校验目标（不存在/非目录直接拒绝，不再写坏 session 拖垮聊天）；`spawnWithLifecycle` 在 cwd 不存在时报 `directory does not exist: …`，替代误导性的 `spawn <cmd> ENOENT`。`resolveCwd` 去重收敛到 `src/commands/cwd.ts`。 |
 | 2026-06-03 | fix | [fix-daemon-supervisor-path](2026-06-03-fix-daemon-supervisor-path.zh.md) | 后台 `lmcb start` 按源码目录结构计算 supervisor 入口路径,在 tsup 压平的 `dist/` 里指向构建产物之外并静默失败。修正路径,spawn 前加存在性守卫 + 回归测试。 |
 | 2026-06-03 | refactor | [base-sdk-options](2026-06-03-base-sdk-options.zh.md) | 抽取 `baseSdkOptions`，让 `createLarkClient` 和 `LarkWsClient` 共用一份 domain/loggerLevel/logger 的 SDK 构造三元组，不再各拷一份。 |

@@ -8,6 +8,13 @@ export interface ChatSession {
   cwd: string;
   lastUsedAt: string;
   messageCount: number;
+  /**
+   * Per-chat idle-timeout override in milliseconds, set by /timeout. When
+   * present it supersedes the bot's configured idle_timeout_seconds for this
+   * (chatId, botName) slot. Survives /new and /cd (it's a chat preference, not
+   * a per-session-id setting). Unset = use the bot default.
+   */
+  idleTimeoutMs?: number;
 }
 
 /**

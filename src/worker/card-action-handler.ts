@@ -18,11 +18,54 @@ export interface CardActionHandlerDeps {
   botName: string;
   idleTimeoutMs: number;
   appOwnerOpenId?: string;
+  /**
+   * Run an internal slash command on behalf of a card button click. Wired in
+   * worker/index.ts to dispatch through the same CommandRouter the typed
+   * `/command` path uses, with reply/replyCard targeting the click's chat.
+   * Optional so unit tests exercising the __claude_cb / stop paths don't have
+   * to provide it.
+   */
+  dispatchCommand?: (
+    slashText: string,
+    meta: { chatId: string; operatorOpenId: string },
+  ) => Promise<void>;
+}
+
+/**
+ * Translate an internal card `cmd` (the `value.cmd` set by command-cards.ts
+ * buttons) into the equivalent slash-command text. Returns undefined for
+ * commands not routed this way (e.g. `stop`, handled inline) or for malformed
+ * values (e.g. `ws.use` without a name).
+ */
+export function cmdToSlash(
+  cmd: string | undefined,
+  value: Record<string, unknown>,
+): string | undefined {
+  switch (cmd) {
+    case 'new':
+      return '/new';
+    case 'status':
+      return '/status';
+    case 'help':
+      return '/help';
+    case 'ws.list':
+      return '/ws list';
+    case 'ws.use': {
+      const name = typeof value['name'] === 'string' ? value['name'] : undefined;
+      return name ? `/ws use ${name}` : undefined;
+    }
+    case 'ws.remove': {
+      const name = typeof value['name'] === 'string' ? value['name'] : undefined;
+      return name ? `/ws remove ${name}` : undefined;
+    }
+    default:
+      return undefined;
+  }
 }
 
 export function makeCardActionHandler(deps: CardActionHandlerDeps): (act: CardActionEvent) => Promise<void> {
   return async (act) => {
-    const { access, dispatcher, log, sessions, botDefaultCwd, botName, idleTimeoutMs, appOwnerOpenId } = deps;
+    const { access, dispatcher, log, sessions, botDefaultCwd, botName, idleTimeoutMs, appOwnerOpenId, dispatchCommand } = deps;
 
     log.info({ chatId: act.chatId, cmd: act.cmd, operator: act.operatorOpenId }, 'card action');
 
@@ -66,15 +109,29 @@ export function makeCardActionHandler(deps: CardActionHandlerDeps): (act: CardAc
       return;
     }
 
-    // Priority 2: internal slash-command buttons (preserved).
-    switch (act.cmd) {
-      case 'stop': {
-        const aborted = dispatcher.abort(act.chatId);
-        log.info({ chatId: act.chatId, aborted }, 'stop action');
-        break;
-      }
-      default:
-        log.info({ cmd: act.cmd }, 'unknown card action');
+    // Priority 2: the live-run stop button aborts directly — there's no
+    // command-router round trip, and it must work even mid-stream.
+    if (act.cmd === 'stop') {
+      const aborted = dispatcher.abort(act.chatId);
+      log.info({ chatId: act.chatId, aborted }, 'stop action');
+      return;
     }
+
+    // Priority 3: every other internal button (new / status / help / ws.*)
+    // routes through the same CommandRouter the typed `/command` path uses,
+    // so a click and a typed command share one implementation. Without
+    // dispatchCommand wired (or for an unknown cmd) the click is a no-op.
+    const slash = cmdToSlash(act.cmd, act.value);
+    if (slash !== undefined && dispatchCommand !== undefined) {
+      log.info({ chatId: act.chatId, cmd: act.cmd, slash }, 'card-action: internal cmd -> dispatch');
+      try {
+        await dispatchCommand(slash, { chatId: act.chatId, operatorOpenId: act.operatorOpenId });
+      } catch (err) {
+        log.error({ err: (err as Error).message, cmd: act.cmd }, 'card-action dispatch failed');
+      }
+      return;
+    }
+
+    log.info({ cmd: act.cmd }, 'unknown card action');
   };
 }

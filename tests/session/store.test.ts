@@ -121,6 +121,52 @@ describe('SessionStore', () => {
     });
   });
 
+  describe('idleTimeoutMs override', () => {
+    it('setIdleTimeout persists the override and reload sees it', async () => {
+      await store.upsert('oc_to', { backend: 'claude', bot: 'claude-bot', cwd: '/tmp' });
+      await store.setIdleTimeout('oc_to', 'claude-bot', 1_200_000);
+      expect(store.get('oc_to', 'claude-bot')?.idleTimeoutMs).toBe(1_200_000);
+      const reloaded = new SessionStore(join(dir, 'sessions.json'));
+      await reloaded.load();
+      expect(reloaded.get('oc_to', 'claude-bot')?.idleTimeoutMs).toBe(1_200_000);
+    });
+
+    it('setIdleTimeout(undefined) clears the override', async () => {
+      await store.upsert('oc_to', { backend: 'claude', bot: 'claude-bot', cwd: '/tmp' });
+      await store.setIdleTimeout('oc_to', 'claude-bot', 1_200_000);
+      await store.setIdleTimeout('oc_to', 'claude-bot', undefined);
+      expect(store.get('oc_to', 'claude-bot')?.idleTimeoutMs).toBeUndefined();
+    });
+
+    it('throws when the slot is not initialized', async () => {
+      await expect(store.setIdleTimeout('oc_missing', 'claude-bot', 1000)).rejects.toThrow(
+        /not initialized/i,
+      );
+    });
+
+    it('survives reset and setCwd (it is a chat preference, not per-session)', async () => {
+      await store.upsert('oc_to', {
+        backend: 'claude',
+        bot: 'claude-bot',
+        cwd: '/a',
+        sessionId: 'sid-1',
+      });
+      await store.setIdleTimeout('oc_to', 'claude-bot', 900_000);
+      await store.reset('oc_to', 'claude-bot');
+      expect(store.get('oc_to', 'claude-bot')?.idleTimeoutMs).toBe(900_000);
+      await store.setCwd('oc_to', 'claude-bot', '/b', false);
+      expect(store.get('oc_to', 'claude-bot')?.idleTimeoutMs).toBe(900_000);
+      expect(store.get('oc_to', 'claude-bot')?.cwd).toBe('/b');
+    });
+
+    it('upsert preserves an existing override when not re-specified', async () => {
+      await store.upsert('oc_to', { backend: 'claude', bot: 'claude-bot', cwd: '/a' });
+      await store.setIdleTimeout('oc_to', 'claude-bot', 720_000);
+      await store.upsert('oc_to', { backend: 'claude', bot: 'claude-bot', cwd: '/a' });
+      expect(store.get('oc_to', 'claude-bot')?.idleTimeoutMs).toBe(720_000);
+    });
+  });
+
   describe('list()', () => {
     it('returns one entry per (chatId, botName) pair', async () => {
       await store.upsert('oc_a', { backend: 'claude', bot: 'claude-bot', cwd: '/x' });

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 import { describe, it, expect, vi } from 'vitest';
 import pino from 'pino';
-import { makeCardActionHandler } from '../../src/worker/card-action-handler.js';
+import { makeCardActionHandler, cmdToSlash } from '../../src/worker/card-action-handler.js';
 import type { CardActionEvent } from '../../src/lark/card-action.js';
 import type { DispatchRequest } from '../../src/worker/dispatcher.js';
 import type { IngressMessage } from '../../src/lark/types.js';
@@ -169,5 +169,104 @@ describe('makeCardActionHandler — __claude_cb branch', () => {
 
     expect(abort).not.toHaveBeenCalled();
     expect(enqueue).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('cmdToSlash', () => {
+  it('maps plain command buttons to slash text', () => {
+    expect(cmdToSlash('new', {})).toBe('/new');
+    expect(cmdToSlash('status', {})).toBe('/status');
+    expect(cmdToSlash('help', {})).toBe('/help');
+    expect(cmdToSlash('ws.list', {})).toBe('/ws list');
+  });
+
+  it('threads value.name into ws.use / ws.remove', () => {
+    expect(cmdToSlash('ws.use', { name: 'proj' })).toBe('/ws use proj');
+    expect(cmdToSlash('ws.remove', { name: 'proj' })).toBe('/ws remove proj');
+  });
+
+  it('returns undefined for ws.* without a name', () => {
+    expect(cmdToSlash('ws.use', {})).toBeUndefined();
+    expect(cmdToSlash('ws.remove', { name: 42 })).toBeUndefined();
+  });
+
+  it('returns undefined for stop (handled inline) and unknown cmds', () => {
+    expect(cmdToSlash('stop', {})).toBeUndefined();
+    expect(cmdToSlash('bogus', {})).toBeUndefined();
+    expect(cmdToSlash(undefined, {})).toBeUndefined();
+  });
+});
+
+describe('makeCardActionHandler — internal cmd routing', () => {
+  function makeHandler(dispatchCommand?: ReturnType<typeof vi.fn>) {
+    const { enqueue, abort } = makeMocks();
+    const handler = makeCardActionHandler({
+      access: makeAccess(),
+      dispatcher: { enqueue, abort },
+      log: silentLog,
+      lastIngressByChat: new Map(),
+      botDefaultCwd: '/tmp',
+      botBackendType: 'claude',
+      botName: 'claude-bot',
+      idleTimeoutMs: 600_000,
+      sessions: { get: () => undefined },
+      ...(dispatchCommand ? { dispatchCommand } : {}),
+    });
+    return { handler, enqueue, abort };
+  }
+
+  function evt(cmd: string, value: Record<string, unknown>): CardActionEvent {
+    return {
+      chatId: 'oc_chat',
+      messageId: 'om_card',
+      operatorOpenId: 'ou_alice',
+      cmd,
+      value: { cmd, ...value },
+      receivedAt: '2026-06-01T00:00:01Z',
+    };
+  }
+
+  it('routes the 新会话 button (cmd:new) to /new', async () => {
+    const dispatchCommand = vi.fn(async () => {});
+    const { handler, enqueue } = makeHandler(dispatchCommand);
+    await handler(evt('new', {}));
+    expect(dispatchCommand).toHaveBeenCalledWith('/new', {
+      chatId: 'oc_chat',
+      operatorOpenId: 'ou_alice',
+    });
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('routes ws.use with a name to /ws use <name>', async () => {
+    const dispatchCommand = vi.fn(async () => {});
+    const { handler } = makeHandler(dispatchCommand);
+    await handler(evt('ws.use', { name: 'proj' }));
+    expect(dispatchCommand).toHaveBeenCalledWith('/ws use proj', {
+      chatId: 'oc_chat',
+      operatorOpenId: 'ou_alice',
+    });
+  });
+
+  it('does not dispatch an unknown cmd', async () => {
+    const dispatchCommand = vi.fn(async () => {});
+    const { handler } = makeHandler(dispatchCommand);
+    await handler(evt('bogus', {}));
+    expect(dispatchCommand).not.toHaveBeenCalled();
+  });
+
+  it('is a safe no-op when dispatchCommand is not wired', async () => {
+    const { handler, enqueue, abort } = makeHandler();
+    await handler(evt('new', {}));
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(abort).not.toHaveBeenCalled();
+  });
+
+  it('swallows a dispatchCommand rejection without throwing', async () => {
+    const dispatchCommand = vi.fn(async () => {
+      throw new Error('send failed');
+    });
+    const { handler } = makeHandler(dispatchCommand);
+    await expect(handler(evt('status', {}))).resolves.toBeUndefined();
+    expect(dispatchCommand).toHaveBeenCalledOnce();
   });
 });
