@@ -6,6 +6,7 @@ import type { IngressMessage } from '../lark/types.js';
 import type { AccessConfig } from '../config/schema.js';
 import type { SessionStore } from '../session/store.js';
 import type { ParsedCommand } from '../commands/router.js';
+import type { DispatchCommand } from './dispatch-command.js';
 import { isAuthorized } from '../auth/access-control.js';
 
 export interface CardActionHandlerDeps {
@@ -27,10 +28,7 @@ export interface CardActionHandlerDeps {
    * whitespace survives intact (no slash-string re-split). Optional so unit
    * tests exercising the __claude_cb / stop paths don't have to provide it.
    */
-  dispatchCommand?: (
-    cmd: ParsedCommand,
-    meta: { chatId: string; operatorOpenId: string },
-  ) => Promise<void>;
+  dispatchCommand?: DispatchCommand;
 }
 
 /**

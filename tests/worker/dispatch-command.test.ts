@@ -22,7 +22,7 @@ function setup(dispatchParsed: (cmd: ParsedCommand, ctx: unknown) => Promise<boo
   const replyCard = vi.fn(async () => {});
   const makeReplies = vi.fn(() => ({ reply, replyCard }));
   const dispatch = makeDispatchCommand({
-    router: { dispatchParsed: dispatchParsed as never },
+    router: { dispatchParsed },
     bot: makeBot(),
     sessions: {} as CommandCtx['sessions'],
     workspaces: {} as CommandCtx['workspaces'],
@@ -39,7 +39,7 @@ describe('makeDispatchCommand', () => {
       calls.push({ cmd, ctx: ctx as Record<string, unknown> });
       return true;
     });
-    const { dispatch } = setup(dispatchParsed);
+    const { dispatch, replies } = setup(dispatchParsed);
 
     await dispatch({ name: 'ws', args: ['use', 'foo bar'] }, {
       chatId: 'oc_chat',
@@ -53,6 +53,8 @@ describe('makeDispatchCommand', () => {
       senderOpenId: 'ou_admin',
       isAdmin: true, // recomputed from the clicker's open_id (in bot.access.admins)
     });
+    // On success the fallback must stay silent — the handler owns its own reply.
+    expect(replies).toEqual([]);
   });
 
   it('recomputes admin=false for a non-admin clicker', async () => {
@@ -103,7 +105,7 @@ describe('makeDispatchCommand', () => {
       throw new Error('reply boom');
     });
     const dispatch = makeDispatchCommand({
-      router: { dispatchParsed: dispatchParsed as never },
+      router: { dispatchParsed },
       bot: makeBot(),
       sessions: {} as CommandCtx['sessions'],
       workspaces: {} as CommandCtx['workspaces'],

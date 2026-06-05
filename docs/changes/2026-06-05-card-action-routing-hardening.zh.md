@@ -41,6 +41,18 @@ slug: card-action-routing-hardening
 `dispatchCommand` 依赖契约从 `(slashText: string, meta)` 改为
 `(cmd: ParsedCommand, meta)`。
 
+**审查驱动的质量打磨**（对同一改动的第二轮代码审查）：
+
+- 回调契约与回复闭包形状现在是 `dispatch-command.ts` 里的**单一导出类型**
+  —— `DispatchCommand`、`CardClickMeta`、`ChatReplies`，由生产方
+  （`makeDispatchCommand`）、消费方（`card-action-handler.ts` 依赖）与接线
+  （`worker/index.ts` 的 `makeReplies` 返回）共同引用。此前各自在两处手写，
+  结构化类型不会在接线点报出漂移。
+- `makeDispatchCommand` 的文档注释不再夸大：兜底回复真正能救的是**在产出
+  自己的回复之前**就抛错的 handler（store 写入失败、构卡异常），并**不**承诺
+  覆盖硬性传输中断（兜底回复发往同一会话同样会失败）；且它在任何成功的状态
+  变更之后才触发，所以含义是「这次点击没有干净完成」，而非「什么都没发生」。
+
 审查提的两个 open question **属于设计如此，未做改动**：admin 专属命令
 （`/access`、`/sessions`、`/reconnect`）没有卡片按钮，`cmdToCommand` 故意
 不映射它们；`/timeout` 的端到端接线已由 store + handler 的单测覆盖。
@@ -52,22 +64,31 @@ slug: card-action-routing-hardening
   （返回 `ParsedCommand`）；`dispatchCommand` 依赖改收 `ParsedCommand`；
   优先级 3 分支更新。
 - `src/worker/dispatch-command.ts` —— **新增。** `makeDispatchCommand` 工厂，
-  含 admin 重算 + 尽力而为兜底回复。
-- `src/worker/index.ts` —— 用 `makeDispatchCommand({...})` 替换内联闭包。
+  含 admin 重算 + 尽力而为兜底回复；导出共享类型 `DispatchCommand` /
+  `CardClickMeta` / `ChatReplies`。
+- `src/worker/index.ts` —— 用 `makeDispatchCommand({...})` 替换内联闭包；
+  `makeReplies` 标注为 `ChatReplies`。
 - `tests/commands/router.test.ts` —— `dispatchParsed` 保持含空白参数完整。
 - `tests/worker/card-action-handler.test.ts` —— `cmdToCommand` 用例含空白/
   换行回归；路由断言改为结构化 payload。
 - `tests/worker/dispatch-command.test.ts` —— **新增。** 结构化透传、admin 重
-  算、router 抛错时兜底回复、兜底回复本身抛错也不再抛。
+  算、**成功时不发兜底**、router 抛错时兜底回复、兜底回复本身抛错也不再抛；
+  mock 改为带类型（去掉 `as never`）。
+- `tests/worker/card-command-e2e.test.ts` —— **新增。** 端到端回归：
+  `cmdToCommand → makeDispatchCommand → 真实 CommandRouter → 真实 wsHandler →
+  真实 WorkspaceStore/SessionStore`。`foo bar` 工作空间加一个 `foo` 诱饵，
+  证明含空白的名字经真实 handler 命中精确目标，补上此前逐缝验证的缺口
+  （未来 wsHandler 若再切词会在此失败）。
 
 ## 验证
 
 - `pnpm typecheck` ✅
 - `pnpm lint` ✅
-- `pnpm test` ✅ —— 281 测试通过（原 273，+8）。新增覆盖：`cmdToCommand`
+- `pnpm test` ✅ —— 282 测试通过（原 273，+9）。新增覆盖：`cmdToCommand`
   把 `foo bar` / `a\nb` 保持为单参数；`dispatchParsed` 不再切词；
-  `makeDispatchCommand` 在 router 抛错时发 `⚠️ command failed: …` 且绝不
-  再抛。
+  `makeDispatchCommand` 在 router 抛错时发 `⚠️ command failed: …`、成功时静默、
+  且绝不再抛；端到端测试经真实 router + wsHandler 把含空白的名字路由到精确
+  工作空间（诱饵前缀正是旧 bug 会命中的目标）。
 
 ## 架构影响
 

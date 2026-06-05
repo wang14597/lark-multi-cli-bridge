@@ -38,7 +38,7 @@ import { sessionsHandler } from '../commands/handlers/sessions.js';
 import { makeReconnectHandler } from '../commands/handlers/reconnect.js';
 import { makeDoctorHandler } from '../commands/handlers/doctor.js';
 import { makeCardActionHandler } from './card-action-handler.js';
-import { makeDispatchCommand } from './dispatch-command.js';
+import { makeDispatchCommand, type ChatReplies } from './dispatch-command.js';
 import { resolveCwd } from '../commands/cwd.js';
 
 export async function runWorker(botName: string): Promise<void> {
@@ -148,10 +148,7 @@ export async function runWorker(botName: string): Promise<void> {
 
   // Reply closures targeting a given chat. Shared by the typed-message path
   // and the card-button path so both send through the identical SDK call.
-  const makeReplies = (chatId: string): {
-    reply: (text: string) => Promise<void>;
-    replyCard: (card: unknown) => Promise<void>;
-  } => ({
+  const makeReplies = (chatId: string): ChatReplies => ({
     reply: async (text) => {
       await client.im.message.create({
         params: { receive_id_type: 'chat_id' },
