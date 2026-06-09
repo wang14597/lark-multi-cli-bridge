@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 import type { Block, FooterStatus, RunState, ToolEntry } from './run-state.js';
 import { toolBodyMd, toolHeaderText } from './tool-render.js';
+import { normalizeMarkdown } from './markdown-normalize.js';
 
 const REASONING_MAX = 1500;
 
@@ -24,7 +25,9 @@ export function renderRunCard(state: RunState): Record<string, unknown> {
   for (const group of groupBlocks(state.blocks)) {
     if (group.kind === 'text') {
       if (group.content.trim()) {
-        elements.push(markdown(group.content));
+        // Re-insert the blank lines Lark's markdown widget needs so dense
+        // single-newline agent output (esp. codex) doesn't collapse into a wall.
+        elements.push(markdown(normalizeMarkdown(group.content)));
       }
     } else {
       elements.push(...renderToolGroup(group.tools, state.terminal !== 'running'));

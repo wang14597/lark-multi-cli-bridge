@@ -60,7 +60,7 @@ lmcb 通过一个 **PATH shim** 来锁定身份：
 | `cli/` | `lmcb` 入口；通过 Unix socket 把子命令转发给 supervisor |
 | `supervisor/` | fork worker、IPC server、崩溃预算、日志聚合 |
 | `worker/` | 单 bot 生命周期：Lark 事件 → dispatcher → adapter → 流式卡片 |
-| `lark/` | Lark SDK 封装：WebSocket、消息解析、`card-builder.ts`、`run-state.ts`、`tool-render.ts`、附件下载 |
+| `lark/` | Lark SDK 封装：WebSocket、消息解析、`card-builder.ts`、`markdown-normalize.ts`、`run-state.ts`、`tool-render.ts`、附件下载 |
 | `adapters/` | `ClaudeAdapter` / `CodexAdapter` / `GeminiAdapter`，实现 `AsyncIterable<AdapterEvent>` |
 | `commands/` | 斜杠命令路由 + handler（11 条命令） |
 | `session/` | `SessionStore` + `WorkspaceStore`，原子文件落盘 |
@@ -89,7 +89,8 @@ v0.4.0 在 `src/lark/` 中新增的关键文件：
 
 - **`run-state.ts`** — `RunState` 数据模型 + 变更辅助函数（跟踪 blocks、reasoning、tools、terminal 标志、footer 文本）。
 - **`tool-render.ts`** — `toolHeaderText` / `toolBodyMd` 辅助；`toolHeaderText` 输出统一的单行 `✅ **Tool** — summary` 格式，被 blockquote 渲染路径复用。
-- **`card-builder.ts`** — `renderRunCard` 构建流式卡片：无头部栏、`streaming_mode` 切换、可折叠思考面板、**基于 blockquote 的工具调用列表**（详见下文"工具调用渲染"）、底部状态栏、终态备注、停止按钮。
+- **`card-builder.ts`** — `renderRunCard` 构建流式卡片：无头部栏、`streaming_mode` 切换、可折叠思考面板、**基于 blockquote 的工具调用列表**（详见下文"工具调用渲染"）、底部状态栏、终态备注、停止按钮。正文文本块在输出前会经过 `normalizeMarkdown`。
+- **`markdown-normalize.ts`** — `normalizeMarkdown(md)`：把飞书 `markdown` 组件分隔块级内容所需的空行补回（标题/列表/引用/代码围栏前后、正文行之间），让密集的单换行 agent 输出（尤其 codex）不再糊成一片。围栏代码原样透传；靠 GFM 分隔行识别**真表格**并保持紧凑，含管道符的正文不误判；列表项缩进续行、引用块惰性续行保持附着；连续空行折叠；幂等。
 
 ## 适配器事件流
 

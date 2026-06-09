@@ -7,6 +7,7 @@ English: [INDEX.md](INDEX.md)
 
 | 日期 | 类型 | 变更 | 摘要 |
 |------|------|------|------|
+| 2026-06-05 | feat | [markdown-normalize](2026-06-05-markdown-normalize.zh.md) | codex 卡片显得密，是因为 bridge 把 agent 正文原样塞进飞书 `markdown` 组件，而该组件靠空行分隔块级内容。新增 `normalizeMarkdown` 把空行补回（标题/列表/引用/代码围栏前后、正文行之间），同时保护围栏代码与表格行；应用于 `renderRunCard` 的文本块。确认参考项目并无此规范化，属净新增。 |
 | 2026-06-05 | fix | [card-action-routing-hardening](2026-06-05-card-action-routing-hardening.zh.md) | card-action-command-routing 的代码审查后续：卡片按钮改为经 `cmdToCommand` + `router.dispatchParsed` 承载**结构化** `{name, args}`（不再切词，含空白的工作空间名命中精确目标），点击失败时发尽力而为的 `⚠️ command failed: …` 回复（抽取为 `makeDispatchCommand`），而非静默死按钮。 |
 | 2026-06-05 | fix | [card-action-command-routing](2026-06-05-card-action-command-routing.zh.md) | 卡片按钮 `new` / `status` / `help` / `ws.list` / `ws.use` / `ws.remove` 全是死的空操作——`makeCardActionHandler` 只实现了 `stop`。新增 `cmdToSlash` + 注入的 `dispatchCommand`，让点击走与键入命令相同的 `CommandRouter`；回复闭包抽成共享的 `makeReplies(chatId)`。 |
 | 2026-06-05 | fix | [timeout-override-wiring](2026-06-05-timeout-override-wiring.zh.md) | `/timeout <seconds>` 只回执却从不生效——handler 没持久化，`Dispatcher` 构造时也没传 `resolveIdleTimeoutMs`。现持久化为 `ChatSession.idleTimeoutMs`（`/new` + `/cd` 后存活），经新增的 `SessionStore.setIdleTimeout`，dispatcher 按 chat 读取。 |
