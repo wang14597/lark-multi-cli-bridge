@@ -101,7 +101,25 @@ export interface CodexAdapterOpts {
   extraArgs?: string[];
   appendSystemPrompt?: string;
   skipGitRepoCheck?: boolean;
+  // Default ON. When true the adapter passes
+  // `--dangerously-bypass-approvals-and-sandbox`, granting codex the same
+  // full machine + network access as claude's bypassPermissions default.
+  // Skipped automatically if extraArgs already carries a sandbox/approval flag.
+  bypassSandbox?: boolean;
 }
+
+// Sandbox/approval flags codex exec understands. If the user wired any of
+// these into extraArgs we defer to their explicit choice instead of forcing
+// the bypass flag on top (which would conflict or double up).
+const CODEX_SANDBOX_FLAGS = [
+  '--dangerously-bypass-approvals-and-sandbox',
+  '--sandbox',
+  '-s',
+  '--ask-for-approval',
+  '-a',
+  '--full-auto',
+  '--yolo',
+];
 
 export class CodexAdapter implements Adapter {
   readonly backend = 'codex' as const;
@@ -134,7 +152,15 @@ export class CodexAdapter implements Adapter {
     // Default on for bridge use: bots commonly point at $HOME or other non-repo cwds.
     if ((this.opts.skipGitRepoCheck ?? true) === true) baseArgs.push('--skip-git-repo-check');
     if (this.opts.model) baseArgs.push('--model', this.opts.model);
-    baseArgs.push(...(this.opts.extraArgs ?? []));
+    // Bypass codex's OS sandbox + approval prompts by default (parity with
+    // claude's bypassPermissions), unless the user already controls the
+    // sandbox via their own extraArgs flag.
+    const extraArgs = this.opts.extraArgs ?? [];
+    const userControlsSandbox = extraArgs.some((a) => CODEX_SANDBOX_FLAGS.includes(a));
+    if ((this.opts.bypassSandbox ?? true) === true && !userControlsSandbox) {
+      baseArgs.push('--dangerously-bypass-approvals-and-sandbox');
+    }
+    baseArgs.push(...extraArgs);
     // resume subcommand takes SESSION_ID as a positional arg before PROMPT.
     if (ctx.sessionId) baseArgs.push(ctx.sessionId);
 

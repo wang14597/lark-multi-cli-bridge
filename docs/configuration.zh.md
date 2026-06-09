@@ -55,3 +55,29 @@ backend:
   codex:
     skip_git_repo_check: false   # 默认 true，设为 false 走 codex 自己的 trust 检查
 ```
+
+## codex：`bypass_sandbox`
+
+`codex exec` 跑在 OS 沙箱里（macOS 是 Apple Seatbelt，Linux 是 Landlock），
+默认禁止联网、只许写工作目录。这个沙箱会拦住 bot 联网、`git push`、调用
+`lark-cli`——而 claude backend 这些全能做，因为 `ClaudeAdapter` 默认
+`--permission-mode bypassPermissions`。
+
+为对齐这个默认，bridge 会给每个 codex bot 传
+`--dangerously-bypass-approvals-and-sandbox`，授予同等的完整机器 + 网络访问权。
+该选项**默认开启**（`lmcb bot add` 会把 `bypass_sandbox: true` 写进生成的 yaml）。
+可 per bot 关掉以保留 codex 原生沙箱：
+
+```yaml
+backend:
+  type: codex
+  codex:
+    bypass_sandbox: false   # 默认 true，设为 false 保留 codex 的 OS 沙箱
+```
+
+若你想要细粒度控制，把自己的沙箱/审批 flag 放进 `extra_args`
+（`--sandbox workspace-write`、`--ask-for-approval on-request` 等）：bridge 会
+检测到并**不再**叠加 bypass flag。
+
+> ⚠️ 当 `bypass_sandbox: true`（默认）时，bot 产出的任何命令都能动整台机器和
+> 网络，且任何能给 bot 发消息的人都能触发它。请据此收敛 bot 的 `default_cwd`。

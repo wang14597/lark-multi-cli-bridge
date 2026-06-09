@@ -17,8 +17,16 @@ const baseClaudeBot: BotConfig = {
 };
 
 /** Peek at an adapter's private constructor opts for assertion purposes. */
-function adapterOpts(adapter: unknown): { appendSystemPrompt?: string; skipGitRepoCheck?: boolean } {
-  return (adapter as { opts: { appendSystemPrompt?: string; skipGitRepoCheck?: boolean } }).opts;
+function adapterOpts(adapter: unknown): {
+  appendSystemPrompt?: string;
+  skipGitRepoCheck?: boolean;
+  bypassSandbox?: boolean;
+} {
+  return (
+    adapter as {
+      opts: { appendSystemPrompt?: string; skipGitRepoCheck?: boolean; bypassSandbox?: boolean };
+    }
+  ).opts;
 }
 
 describe('buildAdapter — effective system prompt resolution', () => {
@@ -82,6 +90,26 @@ describe('buildAdapter — effective system prompt resolution', () => {
     };
     const adapter = buildAdapter(codexBot);
     expect(adapterOpts(adapter).skipGitRepoCheck).toBeUndefined();
+  });
+
+  it('passes bypass_sandbox from codex sub-block into adapter opts', () => {
+    const codexBot: BotConfig = {
+      ...baseClaudeBot,
+      name: 'codex-bot',
+      backend: { type: 'codex', codex: { json_mode: true, extra_args: [], bypass_sandbox: false } },
+    };
+    const adapter = buildAdapter(codexBot);
+    expect(adapterOpts(adapter).bypassSandbox).toBe(false);
+  });
+
+  it('leaves bypassSandbox undefined when codex sub-block omits it (adapter defaults on)', () => {
+    const codexBot: BotConfig = {
+      ...baseClaudeBot,
+      name: 'codex-bot',
+      backend: { type: 'codex', codex: { json_mode: true, extra_args: [] } },
+    };
+    const adapter = buildAdapter(codexBot);
+    expect(adapterOpts(adapter).bypassSandbox).toBeUndefined();
   });
 
   it('passes the same effective prompt into gemini adapter', () => {

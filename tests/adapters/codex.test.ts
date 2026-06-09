@@ -170,6 +170,74 @@ describe('CodexAdapter appendSystemPrompt', () => {
   });
 });
 
+describe('CodexAdapter sandbox bypass', () => {
+  // Mirrors claude's bypassPermissions default: codex exec is wrapped in an
+  // OS sandbox by default (no network, workspace-only writes), which blocks
+  // lark-cli, git push, etc. The adapter bypasses it by default for parity.
+  const ECHO_ARGS_SH = join(HERE, '__fixtures__/echo-args.sh');
+  const BYPASS_FLAG = '--dangerously-bypass-approvals-and-sandbox';
+
+  async function runAndCaptureArgs(adapter: CodexAdapter, prompt: string): Promise<string[]> {
+    const tmp = mkdtempSync(join(tmpdir(), 'codex-test-'));
+    const outFile = join(tmp, 'args.txt');
+    try {
+      const ctx: RunContext = {
+        prompt,
+        cwd: tmp,
+        signal: new AbortController().signal,
+        idleTimeoutMs: 5000,
+        env: { ECHO_ARGS_OUT: outFile },
+      };
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _ of adapter.run(ctx)) {
+        /* drain */
+      }
+      return readFileSync(outFile, 'utf8').split('\0').slice(0, -1);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+
+  it('injects the bypass flag by default', async () => {
+    const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false });
+    const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
+    expect(args).toContain(BYPASS_FLAG);
+  });
+
+  it('injects the bypass flag when bypassSandbox is true', async () => {
+    const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false, bypassSandbox: true });
+    const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
+    expect(args).toContain(BYPASS_FLAG);
+  });
+
+  it('omits the bypass flag when bypassSandbox is false', async () => {
+    const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false, bypassSandbox: false });
+    const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
+    expect(args).not.toContain(BYPASS_FLAG);
+  });
+
+  it('does not double-add when extraArgs already carries the bypass flag', async () => {
+    const adapter = new CodexAdapter({
+      cliPath: ECHO_ARGS_SH,
+      jsonMode: false,
+      extraArgs: [BYPASS_FLAG],
+    });
+    const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
+    expect(args.filter((a) => a === BYPASS_FLAG)).toHaveLength(1);
+  });
+
+  it('defers to a user-supplied --sandbox flag in extraArgs (no auto bypass)', async () => {
+    const adapter = new CodexAdapter({
+      cliPath: ECHO_ARGS_SH,
+      jsonMode: false,
+      extraArgs: ['--sandbox', 'workspace-write'],
+    });
+    const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
+    expect(args).not.toContain(BYPASS_FLAG);
+    expect(args).toContain('--sandbox');
+  });
+});
+
 describe('CodexAdapter jsonMode stream-end done fallback', () => {
   // echo-args.sh writes argv to a file then exits with no stdout.
   // In jsonMode the parser sees nothing -> historically run() emitted no

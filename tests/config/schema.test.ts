@@ -104,6 +104,34 @@ describe('per-backend skill-prompt config', () => {
     expect(parsed.backend.codex.skip_git_repo_check).toBeUndefined();
   });
 
+  it('codex backend accepts bypass_sandbox in codex sub-block', () => {
+    const bot = {
+      ...minimalClaudeBot,
+      name: 'codex-bot',
+      backend: {
+        type: 'codex',
+        codex: { extra_args: [], bypass_sandbox: false },
+      },
+    };
+    const parsed = BotConfigSchema.parse(bot);
+    if (parsed.backend.type !== 'codex') throw new Error('type narrowing');
+    expect(parsed.backend.codex.bypass_sandbox).toBe(false);
+  });
+
+  it('codex backend leaves bypass_sandbox undefined when omitted (adapter defaults on)', () => {
+    const bot = {
+      ...minimalClaudeBot,
+      name: 'codex-bot',
+      backend: {
+        type: 'codex',
+        codex: { extra_args: [] },
+      },
+    };
+    const parsed = BotConfigSchema.parse(bot);
+    if (parsed.backend.type !== 'codex') throw new Error('type narrowing');
+    expect(parsed.backend.codex.bypass_sandbox).toBeUndefined();
+  });
+
   it('gemini backend accepts the same two fields', () => {
     const bot = {
       ...minimalClaudeBot,

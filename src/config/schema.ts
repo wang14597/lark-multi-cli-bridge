@@ -37,6 +37,10 @@ const CodexBackendSchema = z.object({
     json_mode: z.boolean().default(true),
     extra_args: z.array(z.string()).default([]),
     skip_git_repo_check: z.boolean().optional(),
+    // Bypass codex's OS sandbox + approval prompts so the bot can reach the
+    // network, push git, and run lark-cli — parity with claude's
+    // bypassPermissions default. Adapter defaults this ON when omitted.
+    bypass_sandbox: z.boolean().optional(),
   }),
   injectSkillPrompt: z.boolean().optional(),
   appendSystemPrompt: z.string().optional(),
