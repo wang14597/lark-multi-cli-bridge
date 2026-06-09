@@ -94,7 +94,7 @@ Notable v0.4.0 additions inside `src/lark/`:
 - **`run-state.ts`** — `RunState` data model + mutation helpers (tracks blocks, reasoning, tools, terminal flag, footer text).
 - **`tool-render.ts`** — `toolHeaderText` / `toolBodyMd` helpers; `toolHeaderText` is the canonical single-line `✅ **Tool** — summary` format reused by the blockquote rendering path.
 - **`card-builder.ts`** — `renderRunCard` builds the streaming card: no header bar, `streaming_mode` toggle, collapsible reasoning panel, **blockquote-based tool list** (see "Tool-call rendering" below), footer status, terminal-state note, stop button. Answer text groups are run through `normalizeMarkdown` before emission.
-- **`markdown-normalize.ts`** — `normalizeMarkdown(md)`: re-inserts the blank lines Lark's `markdown` widget needs to separate block-level pieces (around headings/lists/quotes/code fences, between prose lines), so dense single-newline agent output (esp. codex) doesn't collapse into a wall. Passes fenced code verbatim, keeps table rows tight, collapses blank runs, idempotent.
+- **`markdown-normalize.ts`** — `normalizeMarkdown(md)`: re-inserts the blank lines Lark's `markdown` widget needs to separate block-level pieces (around headings/lists/quotes/code fences, between prose lines), so dense single-newline agent output (esp. codex) doesn't collapse into a wall. Passes fenced code verbatim; detects **real** GFM tables (header + delimiter row) and keeps them tight while leaving pipe-bearing prose alone; keeps indented list-item continuations and blockquote lazy continuations attached; collapses blank runs; idempotent.
 
 ## Adapter event stream
 

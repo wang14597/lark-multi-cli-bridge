@@ -38,15 +38,24 @@ re-inserts the blank lines Lark expects, applied to the agent answer text
 groups in `renderRunCard`.
 
 Rule: between two adjacent non-blank lines insert exactly one blank line UNLESS
-they belong to the same **tight** block (two list items, two blockquote lines,
-two table rows). Everything else — prose↔prose, paragraph↔list, list↔paragraph,
+doing so would change structure — two items of the same **tight** block (list /
+blockquote / table) stay tight, and a continuation line stays attached to its
+block (see below). Everything else — prose↔prose, paragraph→list/heading/quote,
 around headings and code fences — gets a blank line. Specifics:
 
 - Fenced code blocks (```` ``` ````/`~~~`) are passed through **verbatim** —
   internal blank lines and indentation untouched — with blank padding added
   only around the fence.
-- Table rows (lines containing `|`) are treated as a tight block, so a table
-  body is never split; a blank line is added before/after the table.
+- **Real** markdown tables are detected by a GFM **delimiter row**
+  (`| --- | --- |`) plus its header, not by the mere presence of a `|`. The
+  header + delimiter + contiguous body rows are kept tight (never split), with a
+  blank line before/after the table. Prose/code that merely contains a pipe
+  (shell `a | b`, TS unions `A | B`, regex alternation) is **not** a table and
+  is separated like normal prose.
+- An **indented** paragraph right after a list item is treated as that item's
+  continuation (wrapped bullet text) and kept attached, so a list is never split
+  apart; an unindented paragraph after a list is still separated. A paragraph
+  after a blockquote is kept attached as a CommonMark lazy continuation.
 - Runs of blank lines collapse to a single blank line; leading/trailing blank
   lines are trimmed.
 - Idempotent: normalizing already-normalized text is a no-op.
@@ -60,14 +69,20 @@ agents do not hard-wrap a single paragraph across multiple single-newline
 lines. claude/codex emit one line per logical paragraph, so this holds; a
 backend that soft-wraps prose would see those wraps promoted to paragraphs.
 
+The first iteration was tightened after a codex code review flagged two
+semantic risks: (1) list-item continuation lines were forced out of the list,
+and (2) any line with a `|` was treated as a table, gluing pipe-bearing prose.
+Both are fixed above and covered by regression tests.
+
 ## Files touched
 
 - `src/lark/markdown-normalize.ts` — **new.** `normalizeMarkdown` + line classifier.
 - `src/lark/card-builder.ts` — wrap text-group content in `normalizeMarkdown`.
-- `tests/lark/markdown-normalize.test.ts` — **new.** 13 unit cases (prose split,
-  tight lists w/ blank-before & blank-after, ordered lists, headings,
-  blockquotes, fenced-code verbatim, table preservation, blank collapse, trim,
-  idempotency, empty/single-line).
+- `tests/lark/markdown-normalize.test.ts` — **new.** 16 unit cases (prose split,
+  tight lists w/ blank-before, indented list-continuation attached, ordered
+  lists, headings, blockquote tight + lazy continuation, pipe-prose separated,
+  real GFM-delimiter table detection + preservation, fenced-code verbatim, blank
+  collapse, trim, idempotency, empty/single-line).
 - `tests/lark/card-builder.test.ts` — integration case asserting a dense
   text block renders normalized in the card.
 
@@ -75,7 +90,7 @@ backend that soft-wraps prose would see those wraps promoted to paragraphs.
 
 - `pnpm typecheck` ✅
 - `pnpm lint` ✅
-- `pnpm test` ✅ — 296 tests pass (was 282; +14).
+- `pnpm test` ✅ — 299 tests pass (was 282; +17).
 
 ## Architecture impact
 
