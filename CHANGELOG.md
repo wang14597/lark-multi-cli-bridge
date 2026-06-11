@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file. Format insp
 
 ## [Unreleased]
 
+## [v0.8.0] - 2026-06-09
+
 ### Added
 
 - **Codex bots bypass the OS sandbox by default, matching claude's full-access default.** A user hit "sandbox can't access network / can't `git push` / can't run `lark-cli`" on their codex bot while the claude bot did all of it — an adapter-default asymmetry, not a missing feature: `ClaudeAdapter` spawns with `--permission-mode bypassPermissions`, but `CodexAdapter` passed no sandbox flag and fell back to codex's own OS sandbox (Apple Seatbelt / Landlock), which blocks network egress and restricts writes to the workspace. New `codex.bypass_sandbox` switch (**default ON**) makes `CodexAdapter` pass `--dangerously-bypass-approvals-and-sandbox` for parity. A dedupe guard skips the auto-flag when `extra_args` already carries a sandbox/approval flag (`--sandbox`/`-s`, `--ask-for-approval`/`-a`, `--full-auto`, `--yolo`, or the bypass flag itself), so an operator's explicit choice wins. The default lives at the adapter level (`bypassSandbox ?? true`), and `lmcb bot add` / `lmcb init` writes `bypass_sandbox: true` into generated codex yaml, mirroring how claude's `permission_mode: bypassPermissions` is written. Set `bypass_sandbox: false` to keep codex's native sandbox. See [docs/changes/2026-06-09-codex-sandbox-bypass-default.md](docs/changes/2026-06-09-codex-sandbox-bypass-default.md).

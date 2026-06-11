@@ -2,7 +2,7 @@
 
 English: [architecture.md](architecture.md)
 
-完整规范见 `docs/superpowers/specs/`。本文是更新至 v0.7.1 的工作摘要。逐次变更历史见 [docs/changes/](changes/INDEX.md)。
+完整规范见 `docs/superpowers/specs/`。本文是更新至 v0.8.0 的工作摘要。逐次变更历史见 [docs/changes/](changes/INDEX.md)。
 
 ## 进程拓扑
 

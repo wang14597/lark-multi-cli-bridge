@@ -2,7 +2,7 @@
 
 中文版: [architecture.zh.md](architecture.zh.md)
 
-See the canonical design document under `docs/superpowers/specs/` for the full specification. This is a working summary updated through v0.7.1. Granular per-change history lives in [docs/changes/](changes/INDEX.md).
+See the canonical design document under `docs/superpowers/specs/` for the full specification. This is a working summary updated through v0.8.0. Granular per-change history lives in [docs/changes/](changes/INDEX.md).
 
 ## Process topology
 

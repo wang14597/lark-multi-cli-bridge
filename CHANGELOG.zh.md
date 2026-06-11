@@ -6,6 +6,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## [未发布]
 
+## [v0.8.0] - 2026-06-09
+
 ### 新增
 
 - **Codex bot 默认绕过 OS 沙箱，与 claude 的全访问默认对齐。** 有用户在 codex bot 上撞到「sandbox 无法访问网络 / 不能 `git push` / 不能跑 `lark-cli`」，而同机的 claude bot 全都能——这是适配器默认档的不对称，并非功能缺失：`ClaudeAdapter` 默认 `--permission-mode bypassPermissions` 启动，而 `CodexAdapter` 没传任何沙箱 flag，落回 codex 自带 OS 沙箱（Apple Seatbelt / Landlock），默认禁止联网、只许写工作目录。新增 `codex.bypass_sandbox` 开关（**默认开**），让 `CodexAdapter` 传 `--dangerously-bypass-approvals-and-sandbox` 以对齐。带去重守卫：当 `extra_args` 已含沙箱/审批 flag（`--sandbox`/`-s`、`--ask-for-approval`/`-a`、`--full-auto`、`--yolo` 或 bypass flag 本身）时不再自动叠加，以运维显式选择为准。默认值落在适配器层（`bypassSandbox ?? true`），且 `lmcb bot add` / `lmcb init` 会把 `bypass_sandbox: true` 写进生成的 codex yaml，镜像 claude 的 `permission_mode: bypassPermissions`。设 `bypass_sandbox: false` 可保留 codex 原生沙箱。见 [docs/changes/2026-06-09-codex-sandbox-bypass-default.zh.md](docs/changes/2026-06-09-codex-sandbox-bypass-default.zh.md)。
