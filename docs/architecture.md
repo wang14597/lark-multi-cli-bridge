@@ -104,6 +104,8 @@ Card button clicks are dispatched via Lark's `card.action.trigger` event, parsed
 2. **Live-run stop** (`value.cmd === 'stop'`) — calls `dispatcher.abort(chatId)` directly; must work mid-stream.
 3. **Internal command buttons** (`new` / `status` / `help` / `ws.list` / `ws.use` / `ws.remove`) — `cmdToCommand` maps the button's `cmd` to a **structured** `{ name, args }` (e.g. `ws.use` + `value.name` → `{ name: 'ws', args: ['use', <name>] }`), and the worker-supplied `dispatchCommand` (built by `makeDispatchCommand` in `src/worker/dispatch-command.ts`) runs it through the **same `CommandRouter`** the typed `/command` path uses via `router.dispatchParsed`, with `reply`/`replyCard` targeting the click's chat and admin status recomputed from the clicker's `open_id`. A click and a typed command therefore share one implementation. Carrying the command structurally (rather than re-serializing to a slash string) means a workspace name with whitespace routes to the exact target, not a truncated prefix. A failure inside `dispatchCommand` sends a best-effort `⚠️ command failed: …` fallback reply instead of a silent dead button. Unknown `cmd`s (or a missing `dispatchCommand`) are a logged no-op.
 
+Each adapter defaults to granting its CLI **full machine + network access**, which is what lets the LLM subprocess call `lark-cli`, `git push`, etc.: `ClaudeAdapter` defaults `permission_mode` to `bypassPermissions`, and `CodexAdapter` defaults `bypass_sandbox` on (passing `--dangerously-bypass-approvals-and-sandbox` to escape codex's no-network OS sandbox). Both are per-bot overridable — see [configuration.md](configuration.md).
+
 All adapters expose `AsyncIterable<AdapterEvent>` over `run(ctx)`. The discriminated union has **7 variants**:
 
 | Event | When emitted |

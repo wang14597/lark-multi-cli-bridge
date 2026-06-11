@@ -55,3 +55,32 @@ backend:
   codex:
     skip_git_repo_check: false   # default true; set false to enforce codex's trust check
 ```
+
+## codex: `bypass_sandbox`
+
+`codex exec` runs inside an OS sandbox (Apple Seatbelt on macOS, Landlock on
+Linux) that by default blocks network egress and restricts writes to the
+workspace. That sandbox stops the bot from reaching the network, running
+`git push`, or calling `lark-cli` — all of which the claude backend can do,
+because `ClaudeAdapter` defaults to `--permission-mode bypassPermissions`.
+
+To match that default, the bridge passes
+`--dangerously-bypass-approvals-and-sandbox` for every codex bot, granting the
+same full machine + network access. This is **on by default** (`lmcb bot add`
+writes `bypass_sandbox: true` into the generated yaml). Opt out per bot to keep
+codex's native sandbox:
+
+```yaml
+backend:
+  type: codex
+  codex:
+    bypass_sandbox: false   # default true; set false to keep codex's OS sandbox
+```
+
+If you instead want fine-grained control, put your own sandbox/approval flag in
+`extra_args` (`--sandbox workspace-write`, `--ask-for-approval on-request`, …):
+the bridge detects it and does **not** add the bypass flag on top.
+
+> ⚠️ With `bypass_sandbox: true` (the default), any command the bot produces
+> can touch the whole machine and the network, and anyone who can message the
+> bot can trigger it. Scope the bot's `default_cwd` accordingly.

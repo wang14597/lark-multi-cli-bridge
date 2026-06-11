@@ -100,6 +100,8 @@ v0.4.0 在 `src/lark/` 中新增的关键文件：
 2. **运行中停止**（`value.cmd === 'stop'`）——直接调用 `dispatcher.abort(chatId)`；必须在流式过程中也能生效。
 3. **内部命令按钮**（`new` / `status` / `help` / `ws.list` / `ws.use` / `ws.remove`）——`cmdToCommand` 把按钮的 `cmd` 翻译成**结构化** `{ name, args }`（如 `ws.use` + `value.name` → `{ name: 'ws', args: ['use', <name>] }`），再由 worker 注入的 `dispatchCommand`（由 `src/worker/dispatch-command.ts` 的 `makeDispatchCommand` 构建）通过 `router.dispatchParsed` 走**与键入 `/command` 完全相同的 `CommandRouter`** 执行，`reply`/`replyCard` 指向点击所在的 chat，admin 身份按点击者的 `open_id` 重新计算。因此「点按钮」和「键入命令」共用一份实现。以结构化方式承载命令（而非再序列化成 slash 字符串），含空白字符的工作空间名才能命中精确目标，而不是被截断成前缀。`dispatchCommand` 内部出错时会发一条尽力而为的 `⚠️ command failed: …` 兜底回复，而不是变成静默的「死按钮」。未知 `cmd`（或未接 `dispatchCommand`）则记日志后空操作。
 
+每个适配器默认授予其 CLI **完整的机器 + 网络访问权**，这正是 LLM 子进程能调用 `lark-cli`、`git push` 等的前提：`ClaudeAdapter` 的 `permission_mode` 默认 `bypassPermissions`，`CodexAdapter` 的 `bypass_sandbox` 默认开（传 `--dangerously-bypass-approvals-and-sandbox` 以逃出 codex 的断网 OS 沙箱）。两者均可 per bot 覆盖——见 [configuration.zh.md](configuration.zh.md)。
+
 所有适配器通过 `run(ctx)` 暴露 `AsyncIterable<AdapterEvent>`。判别联合类型共有 **7 个变体**：
 
 | 事件 | 触发时机 |

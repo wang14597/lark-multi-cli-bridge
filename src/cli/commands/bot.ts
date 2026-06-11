@@ -38,7 +38,9 @@ export async function botAdd(opts: BotAddOpts): Promise<void> {
   const backendBlock: Record<string, unknown> =
     opts.backend === 'claude'
       ? { permission_mode: 'bypassPermissions' }
-      : {};
+      : opts.backend === 'codex'
+        ? { bypass_sandbox: true }
+        : {};
   const body: Record<string, unknown> = {
     name: opts.name,
     enabled: true,

@@ -34,6 +34,7 @@ export function buildAdapter(bot: BotConfig): Adapter {
         extraArgs: cfg.extra_args,
         ...(appendSystemPrompt ? { appendSystemPrompt } : {}),
         ...(cfg.skip_git_repo_check !== undefined ? { skipGitRepoCheck: cfg.skip_git_repo_check } : {}),
+        ...(cfg.bypass_sandbox !== undefined ? { bypassSandbox: cfg.bypass_sandbox } : {}),
       });
     }
     case 'gemini': {
