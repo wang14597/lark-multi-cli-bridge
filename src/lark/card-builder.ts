@@ -5,6 +5,10 @@ import { normalizeMarkdown } from './markdown-normalize.js';
 
 const REASONING_MAX = 1500;
 
+// Answer text longer than this many lines is wrapped in a default-expanded
+// collapsible panel so the user can collapse it. Short answers stay plain.
+const ANSWER_FOLD_LINE_THRESHOLD = 10;
+
 interface ToolGroup {
   kind: 'tools';
   tools: ToolEntry[];
@@ -27,7 +31,16 @@ export function renderRunCard(state: RunState): Record<string, unknown> {
       if (group.content.trim()) {
         // Re-insert the blank lines Lark's markdown widget needs so dense
         // single-newline agent output (esp. codex) doesn't collapse into a wall.
-        elements.push(markdown(normalizeMarkdown(group.content)));
+        const md = normalizeMarkdown(group.content);
+        // Long answers get a default-expanded collapsible panel so the user
+        // can collapse them; short answers stay as a plain markdown element.
+        // Count raw lines (what the agent wrote), not the blank lines
+        // normalizeMarkdown inserts.
+        if (group.content.split('\n').length > ANSWER_FOLD_LINE_THRESHOLD) {
+          elements.push(answerPanel(md));
+        } else {
+          elements.push(markdown(md));
+        }
       }
     } else {
       elements.push(...renderToolGroup(group.tools, state.terminal !== 'running'));
@@ -148,6 +161,18 @@ function toolPanel(tool: ToolEntry, expanded: boolean): object {
     border: tool.status === 'error' ? 'red' : 'grey',
     body: toolBodyMd(tool) || '_无输出_',
   });
+}
+
+function answerPanel(body: string): object {
+  return {
+    tag: 'collapsible_panel',
+    expanded: true,
+    header: panelHeader('📄 回答（点击可折叠）'),
+    border: { color: 'grey', corner_radius: '5px' },
+    vertical_spacing: '8px',
+    padding: '8px 8px 8px 8px',
+    elements: [{ tag: 'markdown', content: body }],
+  };
 }
 
 interface PanelOpts {
