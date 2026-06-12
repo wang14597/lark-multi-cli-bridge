@@ -191,4 +191,21 @@ describe('renderRunCard', () => {
     const json = JSON.stringify(renderRunCard(s));
     expect(json).toContain('正在输出');
   });
+
+  it('run card is full-width (config.width_mode = fill) while running', () => {
+    const s = createRunState();
+    appendText(s, 'partial');
+    const card = renderRunCard(s) as Record<string, unknown>;
+    const config = card['config'] as Record<string, unknown>;
+    expect(config['width_mode']).toBe('fill');
+  });
+
+  it('run card stays full-width in terminal state', () => {
+    const s = createRunState();
+    appendText(s, 'done text');
+    finalize(s, { kind: 'done' });
+    const card = renderRunCard(s) as Record<string, unknown>;
+    const config = card['config'] as Record<string, unknown>;
+    expect(config['width_mode']).toBe('fill');
+  });
 });

@@ -53,6 +53,7 @@ export function renderRunCard(state: RunState): Record<string, unknown> {
   return {
     schema: '2.0',
     config: {
+      width_mode: 'fill',
       streaming_mode: state.terminal === 'running',
       summary: { content: summaryText(state) },
     },
