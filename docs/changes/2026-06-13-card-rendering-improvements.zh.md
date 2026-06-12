@@ -34,11 +34,11 @@ slug: card-rendering-improvements
 
 - **短回答（≤ 10 行）：** 与之前完全相同——在回答列中渲染为普通 `markdown` 元素。
 - **长回答（> 10 行）：** markdown 元素通过新的私有辅助函数 `answerPanel` 包裹进
-  `collapsible_panel`，`expanded: true`（默认展开，让用户立即看到内容），面板标题
-  面板标题固定为 `📄 回答（点击可折叠）`。用户可用飞书原生箭头折叠该面板。
+  `collapsible_panel`，`expanded: true`（默认展开，让用户立即看到内容），标题
+  固定为 `📄 回答（点击可折叠）`。用户可用飞书原生箭头折叠该面板。
 
 `answerPanel` 刻意**不复用**现有的 `collapsiblePanel` 辅助函数——后者会强制将面板
-标题设为 `notation` 字号。`answerPanel` 不覆盖字号，面板标题以正常正文字号渲染。
+**正文**设为 `notation`（小）字号。`answerPanel` 不覆盖字号，正文以正常字号渲染。
 
 ## Files touched / 涉及文件
 

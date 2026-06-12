@@ -163,6 +163,10 @@ function toolPanel(tool: ToolEntry, expanded: boolean): object {
   });
 }
 
+// Default-expanded panel wrapping a long answer so the user can collapse it.
+// Deliberately NOT delegating to collapsiblePanel: that helper forces
+// text_size:'notation' (small) on its body for reasoning/tool panels, but the
+// answer is primary content and must render at normal size.
 function answerPanel(body: string): object {
   return {
     tag: 'collapsible_panel',

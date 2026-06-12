@@ -46,8 +46,9 @@ behaviour:
   native Lark chevron.
 
 `answerPanel` deliberately does **not** reuse the existing `collapsiblePanel`
-helper, which forces `notation`-size text on the panel header. `answerPanel`
-omits the text-size override so the panel header renders at normal body size.
+helper, which forces `notation`-size (small) text on the panel **body**.
+`answerPanel` omits that text-size override so the answer renders at normal
+body size.
 
 ## Files touched
 
