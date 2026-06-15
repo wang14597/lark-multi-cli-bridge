@@ -209,7 +209,7 @@ describe('renderRunCard', () => {
     expect(config['width_mode']).toBe('fill');
   });
 
-  it('short answer (<=10 lines) stays a plain markdown element, no panel', () => {
+  it('short message (<=10 lines) renders flat, no fold panel', () => {
     const s = createRunState();
     const short = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join('\n');
     appendText(s, short);
@@ -221,13 +221,10 @@ describe('renderRunCard', () => {
       (e) => e['tag'] === 'markdown' && (e['content'] as string)?.includes('line 1'),
     );
     expect(md).toBeDefined();
-    const answerPanels = elements.filter(
-      (e) => e['tag'] === 'collapsible_panel' && JSON.stringify(e).includes('回答'),
-    );
-    expect(answerPanels).toHaveLength(0);
+    expect(elements.some((e) => e['tag'] === 'collapsible_panel')).toBe(false);
   });
 
-  it('long answer (>10 lines) is wrapped in a default-expanded collapsible panel at normal text size', () => {
+  it('long message (>10 lines) is folded whole into one default-open 展开/折叠 panel at normal text size', () => {
     const s = createRunState();
     const long = Array.from({ length: 11 }, (_, i) => `line ${i + 1}`).join('\n');
     appendText(s, long);
@@ -236,31 +233,59 @@ describe('renderRunCard', () => {
     const body = card['body'] as Record<string, unknown>;
     const elements = body['elements'] as Array<Record<string, unknown>>;
     const panel = elements.find(
-      (e) => e['tag'] === 'collapsible_panel' && JSON.stringify(e['header']).includes('回答'),
+      (e) => e['tag'] === 'collapsible_panel' && JSON.stringify(e['header']).includes('展开/折叠'),
     ) as Record<string, unknown> | undefined;
     expect(panel).toBeDefined();
     expect(panel!['expanded']).toBe(true);
-    const panelEls = panel!['elements'] as Array<Record<string, unknown>>;
-    const bodyMd = panelEls[0]!;
+    expect(JSON.stringify(panel!['header'])).not.toContain('回答');
+    const bodyMd = (panel!['elements'] as Array<Record<string, unknown>>)[0]!;
     expect(bodyMd['tag']).toBe('markdown');
     expect(bodyMd['text_size']).toBeUndefined();
     expect((bodyMd['content'] as string)).toContain('line 11');
+    // The whole answer lives inside the panel — not duplicated at top level.
+    expect(
+      elements.some((e) => e['tag'] === 'markdown' && (e['content'] as string)?.includes('line 11')),
+    ).toBe(false);
   });
 
-  it('threshold boundary: exactly 10 lines plain, 11 lines folds', () => {
+  it('folds the tool-call process together with the answer text in one panel', () => {
+    const s = createRunState();
+    appendText(s, '好的');
+    addTool(s, { id: 't1', name: 'TaskUpdate', input: {} });
+    finishTool(s, 't1', 'done');
+    appendText(s, Array.from({ length: 11 }, (_, i) => `line ${i + 1}`).join('\n'));
+    finalize(s, { kind: 'done' });
+    const card = renderRunCard(s) as Record<string, unknown>;
+    const body = card['body'] as Record<string, unknown>;
+    const elements = body['elements'] as Array<Record<string, unknown>>;
+    const panels = elements.filter(
+      (e) => e['tag'] === 'collapsible_panel' && JSON.stringify(e['header']).includes('展开/折叠'),
+    );
+    expect(panels).toHaveLength(1);
+    const panelJson = JSON.stringify(panels[0]);
+    // Both the tool call and the answer text are INSIDE the fold.
+    expect(panelJson).toContain('TaskUpdate');
+    expect(panelJson).toContain('line 11');
+    // No tool blockquote left sitting OUTSIDE the panel at top level.
+    expect(
+      elements.some((e) => e['tag'] === 'markdown' && (e['content'] as string)?.includes('TaskUpdate')),
+    ).toBe(false);
+  });
+
+  it('threshold boundary: exactly 10 lines flat, 11 lines folds', () => {
     const make = (n: number): Record<string, unknown> => {
       const s = createRunState();
       appendText(s, Array.from({ length: n }, (_, i) => `L${i + 1}`).join('\n'));
       finalize(s, { kind: 'done' });
       return renderRunCard(s) as Record<string, unknown>;
     };
-    const hasAnswerPanel = (card: Record<string, unknown>): boolean => {
+    const hasFoldPanel = (card: Record<string, unknown>): boolean => {
       const els = (card['body'] as { elements: Array<Record<string, unknown>> }).elements;
       return els.some(
-        (e) => e['tag'] === 'collapsible_panel' && JSON.stringify(e['header']).includes('回答'),
+        (e) => e['tag'] === 'collapsible_panel' && JSON.stringify(e['header']).includes('展开/折叠'),
       );
     };
-    expect(hasAnswerPanel(make(10))).toBe(false);
-    expect(hasAnswerPanel(make(11))).toBe(true);
+    expect(hasFoldPanel(make(10))).toBe(false);
+    expect(hasFoldPanel(make(11))).toBe(true);
   });
 });
