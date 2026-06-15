@@ -5,8 +5,9 @@ import { normalizeMarkdown } from './markdown-normalize.js';
 
 const REASONING_MAX = 1500;
 
-// Answer text longer than this many lines is wrapped in a default-expanded
-// collapsible panel so the user can collapse it. Short answers stay plain.
+// A finished message longer than this many rendered lines (answer text + tool
+// calls) is folded whole into one default-open collapsible panel. Shorter
+// messages render flat.
 const ANSWER_FOLD_LINE_THRESHOLD = 10;
 
 interface ToolGroup {
@@ -26,25 +27,28 @@ export function renderRunCard(state: RunState): Record<string, unknown> {
     elements.push(reasoningPanel(state.reasoning.content, state.reasoning.active));
   }
 
+  const finalized = state.terminal !== 'running';
+  const bodyEls: object[] = [];
   for (const group of groupBlocks(state.blocks)) {
     if (group.kind === 'text') {
       if (group.content.trim()) {
         // Re-insert the blank lines Lark's markdown widget needs so dense
         // single-newline agent output (esp. codex) doesn't collapse into a wall.
-        const md = normalizeMarkdown(group.content);
-        // Long answers get a default-expanded collapsible panel so the user
-        // can collapse them; short answers stay as a plain markdown element.
-        // Count raw lines (what the agent wrote), not the blank lines
-        // normalizeMarkdown inserts.
-        if (group.content.split('\n').length > ANSWER_FOLD_LINE_THRESHOLD) {
-          elements.push(answerPanel(md));
-        } else {
-          elements.push(markdown(md));
-        }
+        bodyEls.push(markdown(normalizeMarkdown(group.content)));
       }
     } else {
-      elements.push(...renderToolGroup(group.tools, state.terminal !== 'running'));
+      bodyEls.push(...renderToolGroup(group.tools, finalized));
     }
+  }
+
+  // Once the run is finished, fold a long message — the tool-call process AND
+  // the answer text together — into one collapsible panel the user can expand
+  // or collapse. While streaming we render flat so live progress (and the live
+  // tool panel) stays visible. Short messages render flat in both cases.
+  if (finalized && bodyEls.length > 0 && bodyLineCount(state.blocks) > ANSWER_FOLD_LINE_THRESHOLD) {
+    elements.push(answerPanel(bodyEls));
+  } else {
+    elements.push(...bodyEls);
   }
 
   if (state.terminal === 'interrupted') {
@@ -163,19 +167,36 @@ function toolPanel(tool: ToolEntry, expanded: boolean): object {
   });
 }
 
-// Default-expanded panel wrapping a long answer so the user can collapse it.
-// Deliberately NOT delegating to collapsiblePanel: that helper forces
-// text_size:'notation' (small) on its body for reasoning/tool panels, but the
-// answer is primary content and must render at normal size.
-function answerPanel(body: string): object {
+// Approximate rendered line count of the run body — answer text lines plus one
+// per tool call — used to decide whether a finished message is long enough to
+// fold. Counts raw text lines (not the blank lines normalizeMarkdown inserts).
+function bodyLineCount(blocks: Block[]): number {
+  let n = 0;
+  for (const b of blocks) {
+    if (b.kind === 'text') {
+      if (b.content.trim()) n += b.content.split('\n').length;
+    } else {
+      n += 1;
+    }
+  }
+  return n;
+}
+
+// Default-open panel wrapping a long, finished message — the tool-call process
+// and the answer text together — with a 展开/折叠 toggle so the user can collapse
+// it. Lark panel headers are static, so the label can't flip per state; the
+// chevron indicates open/closed. Deliberately NOT delegating to
+// collapsiblePanel: that helper forces text_size:'notation' (small) on its
+// body, but the answer is primary content at normal size.
+function answerPanel(children: object[]): object {
   return {
     tag: 'collapsible_panel',
     expanded: true,
-    header: panelHeader('📄 回答（点击可折叠）'),
+    header: panelHeader('展开/折叠'),
     border: { color: 'grey', corner_radius: '5px' },
     vertical_spacing: '8px',
     padding: '8px 8px 8px 8px',
-    elements: [{ tag: 'markdown', content: body }],
+    elements: children,
   };
 }
 
