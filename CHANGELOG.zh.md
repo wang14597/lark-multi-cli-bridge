@@ -6,6 +6,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## [未发布]
 
+### 新增
+
+- **运行卡片改为全宽，长回答支持折叠。** `renderRunCard` 设置 `config.width_mode: 'fill'`，让卡片横跨整个聊天窗格，而非默认的偏窄宽度。超过 10 行原始文本的回答块被包裹进默认展开的 `collapsible_panel`（正常字号，标题固定为 `📄 回答（点击可折叠）`），用户可通过飞书原生箭头折叠——短回答（≤ 10 行）与命令卡片不受影响，无配置 schema 变更。见 [docs/changes/2026-06-13-card-rendering-improvements.zh.md](docs/changes/2026-06-13-card-rendering-improvements.zh.md)。
+
 ## [v0.8.0] - 2026-06-09
 
 ### 新增

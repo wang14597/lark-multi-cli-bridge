@@ -191,4 +191,76 @@ describe('renderRunCard', () => {
     const json = JSON.stringify(renderRunCard(s));
     expect(json).toContain('正在输出');
   });
+
+  it('run card is full-width (config.width_mode = fill) while running', () => {
+    const s = createRunState();
+    appendText(s, 'partial');
+    const card = renderRunCard(s) as Record<string, unknown>;
+    const config = card['config'] as Record<string, unknown>;
+    expect(config['width_mode']).toBe('fill');
+  });
+
+  it('run card stays full-width in terminal state', () => {
+    const s = createRunState();
+    appendText(s, 'done text');
+    finalize(s, { kind: 'done' });
+    const card = renderRunCard(s) as Record<string, unknown>;
+    const config = card['config'] as Record<string, unknown>;
+    expect(config['width_mode']).toBe('fill');
+  });
+
+  it('short answer (<=10 lines) stays a plain markdown element, no panel', () => {
+    const s = createRunState();
+    const short = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join('\n');
+    appendText(s, short);
+    finalize(s, { kind: 'done' });
+    const card = renderRunCard(s) as Record<string, unknown>;
+    const body = card['body'] as Record<string, unknown>;
+    const elements = body['elements'] as Array<Record<string, unknown>>;
+    const md = elements.find(
+      (e) => e['tag'] === 'markdown' && (e['content'] as string)?.includes('line 1'),
+    );
+    expect(md).toBeDefined();
+    const answerPanels = elements.filter(
+      (e) => e['tag'] === 'collapsible_panel' && JSON.stringify(e).includes('回答'),
+    );
+    expect(answerPanels).toHaveLength(0);
+  });
+
+  it('long answer (>10 lines) is wrapped in a default-expanded collapsible panel at normal text size', () => {
+    const s = createRunState();
+    const long = Array.from({ length: 11 }, (_, i) => `line ${i + 1}`).join('\n');
+    appendText(s, long);
+    finalize(s, { kind: 'done' });
+    const card = renderRunCard(s) as Record<string, unknown>;
+    const body = card['body'] as Record<string, unknown>;
+    const elements = body['elements'] as Array<Record<string, unknown>>;
+    const panel = elements.find(
+      (e) => e['tag'] === 'collapsible_panel' && JSON.stringify(e['header']).includes('回答'),
+    ) as Record<string, unknown> | undefined;
+    expect(panel).toBeDefined();
+    expect(panel!['expanded']).toBe(true);
+    const panelEls = panel!['elements'] as Array<Record<string, unknown>>;
+    const bodyMd = panelEls[0]!;
+    expect(bodyMd['tag']).toBe('markdown');
+    expect(bodyMd['text_size']).toBeUndefined();
+    expect((bodyMd['content'] as string)).toContain('line 11');
+  });
+
+  it('threshold boundary: exactly 10 lines plain, 11 lines folds', () => {
+    const make = (n: number): Record<string, unknown> => {
+      const s = createRunState();
+      appendText(s, Array.from({ length: n }, (_, i) => `L${i + 1}`).join('\n'));
+      finalize(s, { kind: 'done' });
+      return renderRunCard(s) as Record<string, unknown>;
+    };
+    const hasAnswerPanel = (card: Record<string, unknown>): boolean => {
+      const els = (card['body'] as { elements: Array<Record<string, unknown>> }).elements;
+      return els.some(
+        (e) => e['tag'] === 'collapsible_panel' && JSON.stringify(e['header']).includes('回答'),
+      );
+    };
+    expect(hasAnswerPanel(make(10))).toBe(false);
+    expect(hasAnswerPanel(make(11))).toBe(true);
+  });
 });
