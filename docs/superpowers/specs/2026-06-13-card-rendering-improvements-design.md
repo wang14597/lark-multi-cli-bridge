@@ -1,9 +1,20 @@
 # Card rendering improvements — collapsible long answers + full-width run cards
 
 - **Date**: 2026-06-13
-- **Status**: Draft (awaiting user review)
+- **Status**: Superseded by implementation — see revision note
 - **Author**: Lei (via Claude Code)
 - **Scope**: `src/lark/card-builder.ts` (+ tests)
+
+> **Revision (post-implementation).** This spec captures the original design.
+> During live iteration the collapse behaviour changed materially: instead of
+> folding each long *answer text group* on its own (this spec, §3.1), the
+> **whole finished message — tool-call process + answer text together — folds
+> into one default-open `collapsible_panel`** with the header **`展开/折叠`**
+> (not `📄 回答（点击可折叠）`); streaming and short messages render flat. A
+> "first-3-lines preview + show-more" variant and Lark's native tall-card fold
+> were both tried and rejected. The full-width change (§3.2) shipped as
+> designed. The authoritative record of what shipped is
+> [`docs/changes/2026-06-13-card-rendering-improvements.md`](../../changes/2026-06-13-card-rendering-improvements.md).
 
 ## 1. Goal & Non-Goals
 
