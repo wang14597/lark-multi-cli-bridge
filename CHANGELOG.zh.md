@@ -6,6 +6,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## [未发布]
 
+### 修复
+
+- **bot 不再"走错 session"（跨 worker 会话覆盖）。** 三个 per-bot worker 共用同一个 `state/sessions.json`；每个 `SessionStore` 启动只 `load()` 一次、每次 `upsert` 又把*整个*快照写回整文件，于是某个 worker 落盘它的旧快照会把别的 bot 的槽退回——下次重启时（重启很频繁，近 7 天每 bot 140–205 次）该 bot 就恢复到过期的 `sessionId`。现在每个 worker 拥有自己的 `state/sessions/<bot>.json`（单写者，无跨进程覆盖）；首次加载时 `SessionStore` 只把本 bot 的槽从旧共享文件迁移出来。`(chatId, botName)` keying 与 store API 不变。见 [docs/changes/2026-07-10-per-bot-session-files.zh.md](docs/changes/2026-07-10-per-bot-session-files.zh.md)。
+
 ### 新增
 
 - **运行卡片改为全宽，长消息整体折叠。** `renderRunCard` 设置 `config.width_mode: 'fill'`，让卡片横跨整个聊天窗格，而非默认的偏窄宽度。一次运行结束后，长消息会把**工具调用过程和正文一起**折进一个默认展开的 `collapsible_panel`（正常字号，标题固定为 `展开/折叠`），用户可通过飞书原生箭头折叠。流式输出中以及短消息（≤ 10 渲染行）时 body 平铺。命令卡片不受影响，无配置 schema 变更。见 [docs/changes/2026-06-13-card-rendering-improvements.zh.md](docs/changes/2026-06-13-card-rendering-improvements.zh.md)。

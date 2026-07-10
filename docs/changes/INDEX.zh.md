@@ -7,6 +7,7 @@ English: [INDEX.md](INDEX.md)
 
 | 日期 | 类型 | 变更 | 摘要 |
 |------|------|------|------|
+| 2026-07-10 | fix | [per-bot-session-files](2026-07-10-per-bot-session-files.zh.md) | bot "走错 session"——三个 per-bot worker 共用一个 `state/sessions.json`，启动只读一次、每次 upsert 又整文件写回，导致互相覆盖，重启后恢复到过期 `sessionId`（重启很频繁，140–205/7d）。现在每个 worker 拥有自己的 `state/sessions/<bot>.json`（单写者、无覆盖）；`SessionStore` 首次加载时把本 bot 的槽从旧共享文件里迁移一次。keying/API 不变。 |
 | 2026-06-13 | feat | [card-rendering-improvements](2026-06-13-card-rendering-improvements.zh.md) | 运行卡片通过 `config.width_mode: 'fill'` 改为全宽；运行结束后长消息（工具调用过程 + 正文一起）整体折进一个默认展开的 `展开/折叠` `collapsible_panel`（正常字号），用户可原生折叠；流式与短消息（≤10 渲染行）平铺；命令卡片不受影响。 |
 | 2026-06-09 | feat | [codex-sandbox-bypass-default](2026-06-09-codex-sandbox-bypass-default.zh.md) | codex bot 不能联网、不能 `git push`、不能跑 `lark-cli`，claude bot 却都能——这是适配器默认档的不对称：claude 默认 `bypassPermissions` 启动，codex 落回自带 OS 沙箱（断网、只写工作目录）。新增 `bypass_sandbox` 开关（默认开），让 `CodexAdapter` 传 `--dangerously-bypass-approvals-and-sandbox` 以对齐；带去重守卫，若 `extra_args` 已含 `--sandbox`/`-a`/`--full-auto` 等 flag 则让位。`botAdd` 显式写入 `bypass_sandbox: true`，镜像 claude 的 `permission_mode`。 |
 | 2026-06-05 | feat | [markdown-normalize](2026-06-05-markdown-normalize.zh.md) | codex 卡片显得密，是因为 bridge 把 agent 正文原样塞进飞书 `markdown` 组件，而该组件靠空行分隔块级内容。新增 `normalizeMarkdown` 把空行补回（标题/列表/引用/代码围栏前后、正文行之间），同时保护围栏代码与表格行；应用于 `renderRunCard` 的文本块。确认参考项目并无此规范化，属净新增。 |

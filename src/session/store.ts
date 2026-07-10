@@ -2,6 +2,16 @@
 import { readJsonOrDefault, writeJsonAtomic } from '../util/atomic-file.js';
 import type { ChatSession, SessionsFile } from './types.js';
 
+export interface SessionStoreOpts {
+  /** The bot this store belongs to — enables one-time migration from the
+   *  legacy shared file (see `legacyPath`). */
+  botName?: string;
+  /** Path to the legacy single shared sessions.json. When set and this
+   *  store's own (per-bot) file is empty on first load, this bot's slots are
+   *  extracted from the shared file into the per-bot file, once. */
+  legacyPath?: string;
+}
+
 /**
  * SessionStore is scoped per (chatId, botName). A chat used by multiple
  * bots over time keeps each bot's sessionId / cwd in its own slot so that
@@ -9,14 +19,43 @@ import type { ChatSession, SessionsFile } from './types.js';
  * them step on each other's continuation IDs (which live in disjoint
  * namespaces — a claude UUID is not a valid codex thread_id and vice
  * versa).
+ *
+ * Each per-bot worker points its store at its OWN file (state/sessions/
+ * <bot>.json). Earlier a single shared sessions.json was rewritten wholesale
+ * by every worker from a stale in-memory snapshot, so sibling workers
+ * clobbered each other's updates — after a restart a bot could resume the
+ * wrong (stale) session. Per-bot files give each worker a single-writer file.
  */
 export class SessionStore {
   private data: SessionsFile = { chats: {} };
-  constructor(private filePath: string) {}
+  constructor(
+    private filePath: string,
+    private opts: SessionStoreOpts = {},
+  ) {}
 
   async load(): Promise<void> {
     const raw = await readJsonOrDefault<unknown>(this.filePath, { chats: {} });
     this.data = migrateIfNeeded(raw);
+
+    // One-time migration: if this per-bot file is empty but a legacy shared
+    // sessions.json exists, pull just THIS bot's slots out of it. Each bot's
+    // worker migrates its own slice; the shared file is left untouched.
+    if (
+      Object.keys(this.data.chats).length === 0 &&
+      this.opts.legacyPath &&
+      this.opts.botName
+    ) {
+      const legacy = migrateIfNeeded(
+        await readJsonOrDefault<unknown>(this.opts.legacyPath, { chats: {} }),
+      );
+      const extracted = extractBot(legacy, this.opts.botName);
+      if (Object.keys(extracted.chats).length > 0) {
+        this.data = extracted;
+        await this.persist();
+        return;
+      }
+    }
+
     // Persist immediately if the on-disk file was legacy v1 — that way the
     // next load() is a no-op and ops tooling sees the new shape.
     if (raw !== this.data && Object.keys(this.data.chats).length > 0) {
@@ -126,6 +165,20 @@ export class SessionStore {
   private async persist(): Promise<void> {
     await writeJsonAtomic(this.filePath, this.data);
   }
+}
+
+/**
+ * Return a copy of `data` containing only the slots belonging to `botName`
+ * (keyed the same 2D way, but every chat has at most this one bot). Used to
+ * carve a per-bot file out of the legacy shared sessions.json.
+ */
+function extractBot(data: SessionsFile, botName: string): SessionsFile {
+  const out: SessionsFile = { chats: {} };
+  for (const [chatId, byBot] of Object.entries(data.chats)) {
+    const slot = byBot[botName];
+    if (slot) out.chats[chatId] = { [botName]: slot };
+  }
+  return out;
 }
 
 /**
