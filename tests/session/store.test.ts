@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SessionStore } from '../../src/session/store.js';
@@ -176,6 +176,80 @@ describe('SessionStore', () => {
       expect(all).toHaveLength(3);
       const keys = all.map((e) => `${e.chatId}::${e.botName}`).sort();
       expect(keys).toEqual(['oc_a::claude-bot', 'oc_a::codex-bot', 'oc_b::claude-bot']);
+    });
+  });
+
+  describe('per-bot file isolation (fixes cross-worker clobber)', () => {
+    // Root cause of session cross-talk: three per-bot workers shared ONE
+    // sessions.json; each loaded it once at startup and rewrote the WHOLE
+    // blob on every upsert, so a sibling worker's write reverted another
+    // bot's newer slots. Per-bot files give each worker its own file →
+    // single writer → no clobber.
+    it('two per-bot stores do not clobber each other across reloads', async () => {
+      const claudePath = join(dir, 'sessions', 'claude-bot.json');
+      const codexPath = join(dir, 'sessions', 'codex-bot.json');
+
+      // Two long-lived stores, one per bot (as the workers construct them).
+      const claude = new SessionStore(claudePath, { botName: 'claude-bot' });
+      const codex = new SessionStore(codexPath, { botName: 'codex-bot' });
+      await claude.load();
+      await codex.load();
+
+      await claude.upsert('oc_x', { backend: 'claude', bot: 'claude-bot', cwd: '/h', sessionId: 'claude-S1' });
+      await codex.upsert('oc_x', { backend: 'codex', bot: 'codex-bot', cwd: '/p', sessionId: 'codex-S2' });
+
+      // A fresh reload of each bot's file (simulating a worker restart) still
+      // sees its own latest sessionId — no sibling clobbered it.
+      const claudeReload = new SessionStore(claudePath, { botName: 'claude-bot' });
+      const codexReload = new SessionStore(codexPath, { botName: 'codex-bot' });
+      await claudeReload.load();
+      await codexReload.load();
+      expect(claudeReload.get('oc_x', 'claude-bot')?.sessionId).toBe('claude-S1');
+      expect(codexReload.get('oc_x', 'codex-bot')?.sessionId).toBe('codex-S2');
+    });
+  });
+
+  describe('one-time migration from the legacy shared file', () => {
+    it('extracts only this bot\'s slots from the legacy shared sessions.json', async () => {
+      const legacyPath = join(dir, 'sessions.json');
+      const shared = {
+        chats: {
+          oc_g: {
+            'claude-bot': { backend: 'claude', bot: 'claude-bot', sessionId: 'c-1', cwd: '/h', lastUsedAt: '2026-06-01T00:00:00Z', messageCount: 3 },
+            'codex-bot': { backend: 'codex', bot: 'codex-bot', sessionId: 'x-1', cwd: '/p', lastUsedAt: '2026-06-01T00:00:00Z', messageCount: 5 },
+          },
+        },
+      };
+      writeFileSync(legacyPath, JSON.stringify(shared));
+
+      const claudePath = join(dir, 'sessions', 'claude-bot.json');
+      const claude = new SessionStore(claudePath, { botName: 'claude-bot', legacyPath });
+      await claude.load();
+      // This bot's slot migrated in.
+      expect(claude.get('oc_g', 'claude-bot')?.sessionId).toBe('c-1');
+      // The sibling bot's slot is NOT pulled into this bot's file.
+      expect(claude.get('oc_g', 'codex-bot')).toBeUndefined();
+      // Persisted to the per-bot file; a reload without legacyPath still sees it.
+      const reload = new SessionStore(claudePath, { botName: 'claude-bot' });
+      await reload.load();
+      expect(reload.get('oc_g', 'claude-bot')?.sessionId).toBe('c-1');
+      expect(reload.get('oc_g', 'codex-bot')).toBeUndefined();
+    });
+
+    it('ignores the legacy file once the per-bot file already has data', async () => {
+      const legacyPath = join(dir, 'sessions.json');
+      writeFileSync(legacyPath, JSON.stringify({
+        chats: { oc_g: { 'claude-bot': { backend: 'claude', bot: 'claude-bot', sessionId: 'legacy', cwd: '/h', lastUsedAt: '2026-06-01T00:00:00Z', messageCount: 1 } } },
+      }));
+      const claudePath = join(dir, 'sessions', 'claude-bot.json');
+      mkdirSync(join(dir, 'sessions'), { recursive: true });
+      writeFileSync(claudePath, JSON.stringify({
+        chats: { oc_g: { 'claude-bot': { backend: 'claude', bot: 'claude-bot', sessionId: 'current', cwd: '/h', lastUsedAt: '2026-07-01T00:00:00Z', messageCount: 9 } } },
+      }));
+      const claude = new SessionStore(claudePath, { botName: 'claude-bot', legacyPath });
+      await claude.load();
+      // Per-bot file wins; legacy is not re-migrated over it.
+      expect(claude.get('oc_g', 'claude-bot')?.sessionId).toBe('current');
     });
   });
 

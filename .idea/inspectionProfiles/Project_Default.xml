@@ -1,0 +1,31 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="Eslint" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="false" level="WARNING" enabled_by_default="false">
+      <option name="ignoredPackages">
+        <list>
+          <option value="annotated-types" />
+          <option value="greenlet" />
+          <option value="pydantic" />
+          <option value="pydantic_core" />
+          <option value="SQLAlchemy" />
+          <option value="typing-inspection" />
+          <option value="typing_extensions" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyUnresolvedReferencesInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredIdentifiers">
+        <list>
+          <option value="chekc_validation.output_check_result.DataBaseConfig.*" />
+          <option value="_dict_values.__getitem__" />
+          <option value="httpx._models.Response.__await__" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="SqlCurrentSchemaInspection" enabled="false" level="INFORMATION" enabled_by_default="false" />
+    <inspection_tool class="SqlDialectInspection" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="SqlNoDataSourceInspection" enabled="false" level="WARNING" enabled_by_default="false" />
+  </profile>
+</component>

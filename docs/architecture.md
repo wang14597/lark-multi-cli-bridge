@@ -170,7 +170,7 @@ Tool detail (full input + output) is intentionally not surfaced in the card — 
 ~/.lark-multi-cli-bridge/
 ├── config.yaml                         (global config)
 ├── bots/<name>.yaml                    (per-bot config, chmod 600)
-├── state/sessions.json                 (atomic writes; per (chatId,botName): backend/cwd/sessionId/messageCount + optional idleTimeoutMs /timeout override)
+├── state/sessions/<bot>.json           (one file PER BOT — single writer, so sibling workers can't clobber each other; atomic writes; per (chatId,botName): backend/cwd/sessionId/messageCount + optional idleTimeoutMs /timeout override. Legacy single state/sessions.json is migrated per-bot on first load.)
 ├── state/workspaces.json
 ├── state/processes.json
 ├── logs/supervisor.log

@@ -9,7 +9,12 @@ export const paths = {
   configYaml: join(root, 'config.yaml'),
   bots: join(root, 'bots'),
   state: join(root, 'state'),
+  // Legacy single shared sessions file (pre per-bot split). Kept only as a
+  // one-time migration source; workers no longer write it.
   sessionsJson: join(root, 'state', 'sessions.json'),
+  // Per-bot session files live under state/sessions/<bot>.json so each worker
+  // owns its own file — no cross-process last-writer-wins clobber.
+  sessionsDir: join(root, 'state', 'sessions'),
   workspacesJson: join(root, 'state', 'workspaces.json'),
   processesJson: join(root, 'state', 'processes.json'),
   logs: join(root, 'logs'),
@@ -32,5 +37,11 @@ export const paths = {
       throw new Error(`invalid bot name: ${botName}`);
     }
     return join(root, 'shims', botName);
+  },
+  sessionBotJson(botName: string): string {
+    if (!botName || botName.includes('/') || botName.includes('\\') || botName.includes('..')) {
+      throw new Error(`invalid bot name: ${botName}`);
+    }
+    return join(root, 'state', 'sessions', `${botName}.json`);
   },
 } as const;

@@ -166,7 +166,7 @@ Worker 的 `Dispatcher` 把事件喂给 `CardStreamer`，后者以 500 ms 或 50
 ~/.lark-multi-cli-bridge/
 ├── config.yaml                         （全局配置）
 ├── bots/<name>.yaml                    （per-bot 配置，chmod 600）
-├── state/sessions.json                 （原子写；按 (chatId,botName)：backend/cwd/sessionId/messageCount + 可选 idleTimeoutMs，即 /timeout 覆盖值）
+├── state/sessions/<bot>.json           （每个 bot 一个文件——单写者，兄弟 worker 无法互相覆盖；原子写；按 (chatId,botName)：backend/cwd/sessionId/messageCount + 可选 idleTimeoutMs，即 /timeout 覆盖值。旧的单一 state/sessions.json 在首次加载时按 bot 迁移。）
 ├── state/workspaces.json
 ├── state/processes.json
 ├── logs/supervisor.log

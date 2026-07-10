@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file. Format insp
 
 ## [Unreleased]
 
+### Fixed
+
+- **Bots no longer "go to the wrong session" (cross-worker session clobber).** All three per-bot workers shared one `state/sessions.json`; each `SessionStore` loaded it once at startup and rewrote the *whole* blob on every `upsert`, so a sibling worker persisting its stale snapshot reverted another bot's slots — and on the next restart (restarts were frequent, 140–205/bot over ~7 days) the bot resumed a stale `sessionId`. Each worker now owns its own `state/sessions/<bot>.json` (single writer, no cross-process clobber); on first load `SessionStore` migrates just this bot's slots out of the legacy shared file. The `(chatId, botName)` keying and store API are unchanged. See [docs/changes/2026-07-10-per-bot-session-files.md](docs/changes/2026-07-10-per-bot-session-files.md).
+
 ### Added
 
 - **Agent run card is now full-width and long messages collapse whole.** `renderRunCard` sets `config.width_mode: 'fill'` so the card spans the full chat pane instead of the narrow default. Once a run finishes, a long message — the **tool-call process and the answer text together** — is folded into one default-open `collapsible_panel` (normal text size, fixed header `展开/折叠`) that users can collapse with the native Lark chevron. While streaming, and for short messages (≤ 10 rendered lines), the body renders flat. Command cards are unchanged and there is no config schema change. See [docs/changes/2026-06-13-card-rendering-improvements.md](docs/changes/2026-06-13-card-rendering-improvements.md).
