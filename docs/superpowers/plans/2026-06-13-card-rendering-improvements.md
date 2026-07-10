@@ -1,5 +1,13 @@
 # Card Rendering Improvements Implementation Plan
 
+> **Revision (post-implementation).** Tasks 1 (full-width) and 3 (docs) shipped
+> as planned. Task 2 evolved during live iteration: the final behaviour folds
+> the **whole finished message (tool-call process + answer text) into one
+> default-open `展开/折叠` `collapsible_panel`**, rather than folding each long
+> answer text group separately. See
+> [`docs/changes/2026-06-13-card-rendering-improvements.md`](../../changes/2026-06-13-card-rendering-improvements.md)
+> for the authoritative final design.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the agent run card full-width and let users collapse long answers, both via localized changes to `renderRunCard`.

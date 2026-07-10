@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file. Format insp
 
 ### Added
 
-- **Agent run card is now full-width and long answers are collapsible.** `renderRunCard` sets `config.width_mode: 'fill'` so the card spans the full chat pane instead of the narrow default. Answer text groups longer than 10 raw lines are wrapped in a default-expanded `collapsible_panel` (normal text size, fixed header text "📄 回答（点击可折叠）") that users can collapse with the native Lark chevron — short answers (≤ 10 lines) and command cards are unchanged, and there is no config schema change. See [docs/changes/2026-06-13-card-rendering-improvements.md](docs/changes/2026-06-13-card-rendering-improvements.md).
+- **Agent run card is now full-width and long messages collapse whole.** `renderRunCard` sets `config.width_mode: 'fill'` so the card spans the full chat pane instead of the narrow default. Once a run finishes, a long message — the **tool-call process and the answer text together** — is folded into one default-open `collapsible_panel` (normal text size, fixed header `展开/折叠`) that users can collapse with the native Lark chevron. While streaming, and for short messages (≤ 10 rendered lines), the body renders flat. Command cards are unchanged and there is no config schema change. See [docs/changes/2026-06-13-card-rendering-improvements.md](docs/changes/2026-06-13-card-rendering-improvements.md).
 
 ## [v0.8.0] - 2026-06-09
 
