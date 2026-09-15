@@ -67,7 +67,7 @@ the env vars are recognised but never mint a usable bot token.
 | `lark/` | Lark SDK wrapper: WebSocket, message parsing, `card-builder.ts`, `markdown-normalize.ts`, `run-state.ts`, `tool-render.ts`, attachment download |
 | `adapters/` | `ClaudeAdapter` / `CodexAdapter` / `GeminiAdapter` implementing `AsyncIterable<AdapterEvent>` |
 | `commands/` | Slash-command router and handlers (11 commands) |
-| `session/` | `SessionStore` + `WorkspaceStore` with atomic file persistence |
+| `session/` | `SessionStore` (one file per bot, single writer, cached in memory) + `WorkspaceStore` (one file shared by all bots, read-through — no cache, mutations are read-modify-write). Both use atomic writes. |
 | `auth/` | Access control rules; `register-app.ts` for scan-to-create QR provisioning |
 | `daemon/` | macOS launchd plist generation |
 | `config/` | YAML loading, zod schema validation, bots-dir watcher with hot-reload |
@@ -171,7 +171,7 @@ Tool detail (full input + output) is intentionally not surfaced in the card — 
 ├── config.yaml                         (global config)
 ├── bots/<name>.yaml                    (per-bot config, chmod 600)
 ├── state/sessions/<bot>.json           (one file PER BOT — single writer, so sibling workers can't clobber each other; atomic writes; per (chatId,botName): backend/cwd/sessionId/messageCount + optional idleTimeoutMs /timeout override. Legacy single state/sessions.json is migrated per-bot on first load.)
-├── state/workspaces.json
+├── state/workspaces.json               (named workspace aliases — ONE file shared by every worker, because `/ws save` in one bot must resolve from another. Many writers, so the store is read-through: every read hits disk and every save/remove is a read-modify-write of one key.)
 ├── state/processes.json
 ├── logs/supervisor.log
 ├── logs/workers/<bot>/YYYY-MM-DD.log   (rotated daily)

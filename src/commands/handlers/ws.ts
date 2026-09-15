@@ -17,7 +17,7 @@ export const wsHandler: CommandHandler = {
       }
       case 'use': {
         if (!name) return ctx.reply('usage: /ws use <name>');
-        const path = ctx.workspaces.resolve(name);
+        const path = await ctx.workspaces.resolve(name);
         if (!path) return ctx.reply(`unknown workspace: ${name}`);
         const existing = ctx.sessions.get(ctx.chatId, ctx.bot.name);
         if (existing) await ctx.sessions.setCwd(ctx.chatId, ctx.bot.name, path, true);
@@ -32,7 +32,8 @@ export const wsHandler: CommandHandler = {
       case 'list': {
         const s = ctx.sessions.get(ctx.chatId, ctx.bot.name);
         const current = s?.cwd;
-        const named = Object.fromEntries(ctx.workspaces.list().map((w) => [w.name, w.path]));
+        const all = await ctx.workspaces.list();
+        const named = Object.fromEntries(all.map((w) => [w.name, w.path]));
 
         if (ctx.replyCard !== undefined) {
           await ctx.replyCard(buildWorkspacesCard(current, named));
@@ -40,7 +41,6 @@ export const wsHandler: CommandHandler = {
         }
 
         // Text fallback.
-        const all = ctx.workspaces.list();
         if (all.length === 0) return ctx.reply('no workspaces saved');
         return ctx.reply(all.map((w) => `  ${w.name} -> ${w.path}`).join('\n'));
       }
