@@ -6,3 +6,8 @@ coverage/
 .vitest/
 .env
 .env.local
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
