@@ -6,6 +6,11 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## [未发布]
 
+### 修复
+
+- **存下的 workspace 不再丢失或跨 bot 读到旧值。** `state/workspaces.json` 由每个 per-bot worker 共同写入，但 `WorkspaceStore` 只在启动时加载一次、每次 `save` / `remove` 又把*整个*快照写回——和 session 那次按 bot 拆文件所修的是同一个 bug，也正是那份文档里记下的后续项。于是在 claude-bot 里 `/ws save alpha`、再到 codex-bot 里 `/ws save beta`，`alpha` 就没了；而且在一个 bot 里存的 workspace，其它 bot 要等自己的 worker 重启才看得见。workspace 别名本就是**全局**命名空间（一个 bot 存、另一个 bot `/ws use`），所以修法不是按 bot 拆文件（那会把命名空间切碎），而是把 store 改成**读时透传**：不缓存、每次读都读盘、每次写都是只改自己那一个 key 的读-改-写。`resolve()` / `list()` 改为 async；`load()` 保留为空实现以维持生命周期对称。磁盘格式、文件路径、`/ws` 命令表面均不变。跨进程的读-改-写仍非原子，但丢更新的窗口从"整个 worker 生命周期"缩到了一条交互式低频命令的几毫秒。见 [docs/changes/2026-09-15-workspace-store-read-through.zh.md](docs/changes/2026-09-15-workspace-store-read-through.zh.md)。
+- **bot 不再"走错 session"（跨 worker 会话覆盖）。** 三个 per-bot worker 共用同一个 `state/sessions.json`；每个 `SessionStore` 启动只 `load()` 一次、每次 `upsert` 又把*整个*快照写回整文件，于是某个 worker 落盘它的旧快照会把别的 bot 的槽退回——下次重启时（重启很频繁，近 7 天每 bot 140–205 次）该 bot 就恢复到过期的 `sessionId`。现在每个 worker 拥有自己的 `state/sessions/<bot>.json`（单写者，无跨进程覆盖）；首次加载时 `SessionStore` 只把本 bot 的槽从旧共享文件迁移出来。`(chatId, botName)` keying 与 store API 不变。见 [docs/changes/2026-07-10-per-bot-session-files.zh.md](docs/changes/2026-07-10-per-bot-session-files.zh.md)。
+
 ### 新增
 
 - **运行卡片改为全宽，长消息整体折叠。** `renderRunCard` 设置 `config.width_mode: 'fill'`，让卡片横跨整个聊天窗格，而非默认的偏窄宽度。一次运行结束后，长消息会把**工具调用过程和正文一起**折进一个默认展开的 `collapsible_panel`（正常字号，标题固定为 `展开/折叠`），用户可通过飞书原生箭头折叠。流式输出中以及短消息（≤ 10 渲染行）时 body 平铺。命令卡片不受影响，无配置 schema 变更。见 [docs/changes/2026-06-13-card-rendering-improvements.zh.md](docs/changes/2026-06-13-card-rendering-improvements.zh.md)。

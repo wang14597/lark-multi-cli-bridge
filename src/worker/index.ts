@@ -128,7 +128,13 @@ export async function runWorker(botName: string): Promise<void> {
   if (botSelfOpenId) log.info({ botSelfOpenId }, 'bot self open_id resolved');
   else log.warn('bot self open_id NOT resolved; group @-mention will not strip prefix');
 
-  const sessions = new SessionStore(paths.sessionsJson);
+  // Per-bot session file: each worker owns its own file so sibling workers
+  // can't clobber each other's sessions via a shared blob. On first run this
+  // migrates this bot's slots out of the legacy shared sessions.json.
+  const sessions = new SessionStore(paths.sessionBotJson(bot.name), {
+    botName: bot.name,
+    legacyPath: paths.sessionsJson,
+  });
   await sessions.load();
 
   const workspaces = new WorkspaceStore(paths.workspacesJson);
