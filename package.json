@@ -14,7 +14,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "reload": "tsup --no-dts && node ./bin/lmcb.mjs restart",
-    "reload:all": "tsup --no-dts && node ./bin/lmcb.mjs stop && node ./bin/lmcb.mjs start",
+    "reload:all": "tsup --no-dts && (node ./bin/lmcb.mjs stop || true) && node ./bin/lmcb.mjs start",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\"",

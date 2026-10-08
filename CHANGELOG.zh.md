@@ -8,7 +8,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### 变更
 
-- **用 `pnpm reload <bot>` / `pnpm reload:all` 跑「改代码 → 构建 → 重启」循环。** 之前让改动生效要先敲 `pnpm build` 再敲 `node ./bin/lmcb.mjs restart <bot>`，而且构建失败并不会拦住重启。现在 `pnpm reload codex-bot` 用 `&&` 把两步串起来，只重启那一个 worker（supervisor 用 `fork()` 起 worker，重启即加载当前 `dist/`，兄弟 bot 不受影响）；`pnpm reload:all` 则是构建 + 停启 supervisor，用于 `restart` 无法重载的 supervisor / CLI / IPC 改动。两者都带 `--no-dts`：声明文件生成占了构建大头（实测 3.1s → 0.3s），且只对 import 本包的人有意义——类型检查仍归 `pnpm typecheck`，`pnpm build` 保持不变用于发布。bot 名没有写死；pnpm 会把 run 参数追加到 `&&` 链末尾，正好落在 `restart` 后面。见 [docs/changes/2026-10-08-dev-reload-scripts.zh.md](docs/changes/2026-10-08-dev-reload-scripts.zh.md)。
+- **用 `pnpm reload <bot>` / `pnpm reload:all` 跑「改代码 → 构建 → 重启」循环。** 之前让改动生效要先敲 `pnpm build` 再敲 `node ./bin/lmcb.mjs restart <bot>`，而且构建失败并不会拦住重启。现在 `pnpm reload codex-bot` 用 `&&` 把两步串起来，只重启那一个 worker（supervisor 用 `fork()` 起 worker，重启即加载当前 `dist/`，兄弟 bot 不受影响）；`pnpm reload:all` 则是构建 + 停启 supervisor，用于 `restart` 无法重载的 supervisor / CLI / IPC 改动——其中 `stop` 一步包在 `|| true` 里，使同一条命令也能当冷启动用（supervisor 没在跑时 `stop` 会退出 1，否则会中断整条链），安全性由 `start` 在已有 socket 仍 `ping` 得通时拒绝启动第二个 supervisor 来保证。两者都带 `--no-dts`：声明文件生成占了构建大头（实测 3.1s → 0.3s），且只对 import 本包的人有意义——类型检查仍归 `pnpm typecheck`，`pnpm build` 保持不变用于发布。bot 名没有写死；pnpm 会把 run 参数追加到 `&&` 链末尾，正好落在 `restart` 后面。见 [docs/changes/2026-10-08-dev-reload-scripts.zh.md](docs/changes/2026-10-08-dev-reload-scripts.zh.md)。
 
 ### 修复
 

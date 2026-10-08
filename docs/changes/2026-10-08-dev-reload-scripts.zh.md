@@ -28,7 +28,7 @@ node ./bin/lmcb.mjs restart <bot>
 
 ```json
 "reload": "tsup --no-dts && node ./bin/lmcb.mjs restart",
-"reload:all": "tsup --no-dts && node ./bin/lmcb.mjs stop && node ./bin/lmcb.mjs start",
+"reload:all": "tsup --no-dts && (node ./bin/lmcb.mjs stop || true) && node ./bin/lmcb.mjs start",
 ```
 
 `pnpm reload <bot>` —— 重新构建，然后重启一个 worker。bot 名没有写死在脚本里：
@@ -42,8 +42,15 @@ supervisor / CLI / IPC 代码上时需要用它：那部分代码活在 supervis
 `restart` 只重新 fork worker，碰不到它。IPC 协议上没有 `restart --all`
 （`Methods` 只有接单个 bot 的 `restart-worker`），所以整体停启是最直接的办法。
 
-两个脚本都用 `&&` 串联，构建失败就不会执行重启，不会留下一个对着过期 `dist/`
-跑的 worker。
+其中 `stop` 一步包在 `(… || true)` 里，好让这个脚本同时能当冷启动用。
+`stopCommand` 在联系不上 supervisor 时会 `process.exit(1)`（没有 `ipc.sock`，
+connect 得到 `ENOENT`），若用裸 `&&` 就会在跑到 `start` 之前中断整条链——而那
+恰恰是最需要它跑起来的场景。吞掉这个退出码是安全的，因为 `startCommand` 守住了
+另一侧：socket 存在且 `ping` 得通时它会报 `supervisor already running` 并拒绝启动，
+不会起出第二个（socket 是残留的则放行）。
+
+除此之外两个脚本都用 `&&` 串联，构建失败就不会执行重启，不会留下一个对着过期
+`dist/` 跑的 worker。
 
 这里用 `--no-dts` 是安全的：类型**检查**是 `pnpm typecheck`（`tsc --noEmit`）的
 活，和声明文件生成是两回事。`pnpm build` 未改动，发布时照常产出声明文件。

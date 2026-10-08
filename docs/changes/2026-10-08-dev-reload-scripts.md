@@ -30,7 +30,7 @@ Two scripts in `package.json`:
 
 ```json
 "reload": "tsup --no-dts && node ./bin/lmcb.mjs restart",
-"reload:all": "tsup --no-dts && node ./bin/lmcb.mjs stop && node ./bin/lmcb.mjs start",
+"reload:all": "tsup --no-dts && (node ./bin/lmcb.mjs stop || true) && node ./bin/lmcb.mjs start",
 ```
 
 `pnpm reload <bot>` — rebuild, then restart one worker. The bot name is not
@@ -47,8 +47,17 @@ process: `restart` only re-forks workers and can't reload it. There is no
 taking one bot), so a full stop/start is the straightforward way to cycle
 everything.
 
-Both chain with `&&`, so a failed build skips the restart instead of leaving
-a worker running against a stale `dist/`.
+The `stop` step is wrapped in `(… || true)` so the script doubles as a cold
+start. `stopCommand` `process.exit(1)`s when it can't reach the supervisor
+(no `ipc.sock` → `ENOENT` on connect), which with a bare `&&` would abort the
+chain before `start` ever ran — exactly the case where you most want it to
+run. Swallowing that exit is safe because `startCommand` guards the other
+direction: if the socket exists and still answers `ping` it refuses with
+`supervisor already running` rather than starting a second one (a stale
+socket falls through).
+
+Otherwise both chain with `&&`, so a failed build skips the restart instead
+of leaving a worker running against a stale `dist/`.
 
 `--no-dts` is safe here because type *checking* is `pnpm typecheck`
 (`tsc --noEmit`), a separate job from declaration emit. `pnpm build` is
