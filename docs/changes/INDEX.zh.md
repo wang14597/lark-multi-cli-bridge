@@ -7,6 +7,7 @@ English: [INDEX.md](INDEX.md)
 
 | 日期 | 类型 | 变更 | 摘要 |
 |------|------|------|------|
+| 2026-10-08 | chore | [dev-reload-scripts](2026-10-08-dev-reload-scripts.zh.md) | 用 `pnpm reload <bot>`（构建 + 重启单个 worker）和 `pnpm reload:all`（构建 + 停启 supervisor，用于 `restart` 无法重载的 supervisor/CLI/IPC 改动；其中 `stop` 包在 `|| true` 里，使它同时能当冷启动用，安全性由 `start` 在 `ping` 得通时拒绝启动来保证）替代手敲 `pnpm build` 再 `node ./bin/lmcb.mjs restart <bot>`。带 `--no-dts`——声明文件生成占了构建大头（实测 3.1s → 0.3s），对运行 bridge 没意义；类型检查仍由 `pnpm typecheck` 负责。bot 名没写死：pnpm 把 run 参数追加到 `&&` 链末尾，正好落在 `restart` 后面。 |
 | 2026-09-15 | fix | [workspace-store-read-through](2026-09-15-workspace-store-read-through.zh.md) | per-bot-session-files 留下的后续项：`WorkspaceStore` 对共享的 `state/workspaces.json` 有同样的"只读一次 + 整快照写回"问题，一个 worker 的 `/ws save` 会把别的 worker 的条目退回，且别处存的条目要等重启才看得见。由于 workspace 别名本就是**全局**命名空间（claude-bot 存、codex-bot 用），修法不是按 bot 拆文件而是读时透传：不缓存、每次读都读盘、每次写都是只改一个 key 的读-改-写。`resolve`/`list` 改为 async；文件格式与 `/ws` 命令表面不变。 |
 | 2026-07-10 | fix | [per-bot-session-files](2026-07-10-per-bot-session-files.zh.md) | bot "走错 session"——三个 per-bot worker 共用一个 `state/sessions.json`，启动只读一次、每次 upsert 又整文件写回，导致互相覆盖，重启后恢复到过期 `sessionId`（重启很频繁，140–205/7d）。现在每个 worker 拥有自己的 `state/sessions/<bot>.json`（单写者、无覆盖）；`SessionStore` 首次加载时把本 bot 的槽从旧共享文件里迁移一次。keying/API 不变。 |
 | 2026-06-13 | feat | [card-rendering-improvements](2026-06-13-card-rendering-improvements.zh.md) | 运行卡片通过 `config.width_mode: 'fill'` 改为全宽；运行结束后长消息（工具调用过程 + 正文一起）整体折进一个默认展开的 `展开/折叠` `collapsible_panel`（正常字号），用户可原生折叠；流式与短消息（≤10 渲染行）平铺；命令卡片不受影响。 |
