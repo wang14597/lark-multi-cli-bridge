@@ -23,5 +23,5 @@ export const BOT_SKILL_PROMPT: string = `# lark-multi-cli-bridge runtime convent
 
 这些块**对用户不可见**——回复里**不要照抄 XML 标签**。
 
-需要发可交互卡片（按钮回调 \`__claude_cb\`）、跑 \`lark-cli auth login\` 授权、或搭多步按钮流程时，**主动 invoke \`lark-bridge-overlay\` skill** 拿详细规范。lark-cli 本身的用法在上游 \`lark-im\` / \`lark-base\` 等 skill 里。
+需要发可交互卡片（按钮回调 \`__claude_cb\`）、跑 \`lark-cli auth login\` 授权、搭多步按钮流程、替用户给人/群发消息、或读飞书文档时，**主动 invoke \`lark-bridge-overlay\` skill** 拿详细规范。lark-cli 本身的用法在上游 \`lark-im\` / \`lark-base\` 等 skill 里。
 `;

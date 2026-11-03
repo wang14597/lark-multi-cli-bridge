@@ -40,6 +40,6 @@ describe('BOT_SKILL_PROMPT', () => {
 
   it('content is byte-stable (snapshot guard)', () => {
     const digest = createHash('sha256').update(BOT_SKILL_PROMPT, 'utf8').digest('hex');
-    expect(digest).toMatchInlineSnapshot(`"2f71fb57de08981710aedb4068935db34c0e708ad61fcd2a56edaac0e5706c17"`);
+    expect(digest).toMatchInlineSnapshot(`"3de75b0a45879c92be353737bbf1c49acb3b5f2dd1ddde1d3171193bc90292d8"`);
   });
 });
