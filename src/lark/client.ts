@@ -28,10 +28,15 @@ export function createLarkClient(opts: LarkClientOpts): Lark.Client {
  * exact field names depend on SDK version. If unavailable, callers should fall back
  * to the LMCB_APP_OWNER_OPEN_ID env var.
  */
-export async function fetchAppOwnerOpenId(client: Lark.Client, appId: string): Promise<string | undefined> {
+export async function fetchAppOwnerOpenId(
+  client: Lark.Client,
+  appId: string,
+): Promise<string | undefined> {
   try {
     // Cast to a relaxed shape because SDK type narrowness differs across versions.
-    const sdk = client as unknown as { application?: { application?: { get?: (req: unknown) => Promise<unknown> } } };
+    const sdk = client as unknown as {
+      application?: { application?: { get?: (req: unknown) => Promise<unknown> } };
+    };
     const get = sdk.application?.application?.get;
     if (typeof get !== 'function') return undefined;
     // `lang` is mandatory: the API 400s with "lang is required" without it,
@@ -45,9 +50,7 @@ export async function fetchAppOwnerOpenId(client: Lark.Client, appId: string): P
     // owner.owner_id is the populated field on real payloads; open_id kept
     // for older SDK shapes. Self-built apps may return an owner object with
     // empty ids — creator_id is always populated, fall back to it.
-    return (
-      owner?.open_id || owner?.owner_id || res.data?.app?.creator_id || undefined
-    );
+    return owner?.open_id || owner?.owner_id || res.data?.app?.creator_id || undefined;
   } catch {
     return undefined;
   }
@@ -59,7 +62,10 @@ export async function fetchAppOwnerOpenId(client: Lark.Client, appId: string): P
  * Returns undefined if the API is unavailable; callers should fall back to
  * the LMCB_BOT_OPEN_ID env var.
  */
-export async function fetchBotSelfOpenId(client: Lark.Client, _appId: string): Promise<string | undefined> {
+export async function fetchBotSelfOpenId(
+  client: Lark.Client,
+  _appId: string,
+): Promise<string | undefined> {
   try {
     // Go through Client.request, NOT the raw httpInstance: only the former
     // injects the tenant token and prefixes the domain. The raw axios
@@ -75,4 +81,35 @@ export async function fetchBotSelfOpenId(client: Lark.Client, _appId: string): P
   } catch {
     return undefined;
   }
+}
+
+export interface ChatBot {
+  openId: string;
+  name: string;
+}
+
+/**
+ * Bot members of a chat as seen by THIS app (open_ids are app-scoped, so a
+ * sibling worker gets different ids for the same bot). Returns [] on any
+ * failure — the roster then simply carries no @ ids.
+ */
+export async function fetchChatBots(client: Lark.Client, chatId: string): Promise<ChatBot[]> {
+  try {
+    const res = (await client.request({
+      method: 'GET',
+      url: `/open-apis/im/v1/chats/${chatId}/members/list`,
+      params: { member_types: 'bot', member_id_type: 'open_id', page_size: 100 },
+    })) as { data?: { bots?: BotMember[] }; bots?: BotMember[] };
+    const bots = res.data?.bots ?? res.bots ?? [];
+    return bots.flatMap((b) =>
+      b.member_id && b.name ? [{ openId: b.member_id, name: b.name }] : [],
+    );
+  } catch {
+    return [];
+  }
+}
+
+interface BotMember {
+  member_id?: string;
+  name?: string;
 }

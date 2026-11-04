@@ -7,6 +7,7 @@ import pino from 'pino';
 import { CommandRouter } from '../../src/commands/router.js';
 import { wsHandler } from '../../src/commands/handlers/ws.js';
 import { SessionStore } from '../../src/session/store.js';
+import type { TeamStore } from '../../src/session/team.js';
 import { WorkspaceStore } from '../../src/session/workspace.js';
 import { makeDispatchCommand } from '../../src/worker/dispatch-command.js';
 import { cmdToCommand } from '../../src/worker/card-action-handler.js';
@@ -56,6 +57,7 @@ describe('card ws.use click — end to end through the real router + wsHandler',
       bot: makeBot(),
       sessions,
       workspaces,
+      teams: {} as TeamStore,
       makeReplies: () => ({
         reply: async (t) => void replies.push(t),
         replyCard: async () => {},

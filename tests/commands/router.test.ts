@@ -5,7 +5,10 @@ import type { CommandCtx } from '../../src/commands/types.js';
 
 describe('parseSlashCommand', () => {
   it('splits name and args', () => {
-    expect(parseSlashCommand('/cd /tmp/foo bar')).toEqual({ name: 'cd', args: ['/tmp/foo', 'bar'] });
+    expect(parseSlashCommand('/cd /tmp/foo bar')).toEqual({
+      name: 'cd',
+      args: ['/tmp/foo', 'bar'],
+    });
   });
   it('returns undefined for non-slash text', () => {
     expect(parseSlashCommand('hello')).toBeUndefined();
@@ -20,8 +23,13 @@ describe('CommandRouter', () => {
     ]);
     const replies: string[] = [];
     const ctx = {
-      chatId: 'oc_x', senderOpenId: 'ou_x', isAdmin: false,
-      bot: {} as CommandCtx['bot'], sessions: {} as CommandCtx['sessions'], workspaces: {} as CommandCtx['workspaces'],
+      chatId: 'oc_x',
+      senderOpenId: 'ou_x',
+      isAdmin: false,
+      bot: {} as CommandCtx['bot'],
+      sessions: {} as CommandCtx['sessions'],
+      workspaces: {} as CommandCtx['workspaces'],
+      teams: {} as CommandCtx['teams'],
       reply: async (t: string) => void replies.push(t),
     };
     await router.dispatch('/foo a b', ctx);
@@ -36,8 +44,13 @@ describe('CommandRouter', () => {
       { name: 'ws', description: '', run: async (c) => void seen.push(c.args) },
     ]);
     const ctx = {
-      chatId: 'oc_x', senderOpenId: 'ou_x', isAdmin: false,
-      bot: {} as CommandCtx['bot'], sessions: {} as CommandCtx['sessions'], workspaces: {} as CommandCtx['workspaces'],
+      chatId: 'oc_x',
+      senderOpenId: 'ou_x',
+      isAdmin: false,
+      bot: {} as CommandCtx['bot'],
+      sessions: {} as CommandCtx['sessions'],
+      workspaces: {} as CommandCtx['workspaces'],
+      teams: {} as CommandCtx['teams'],
       reply: async () => {},
     };
     // A whitespace-bearing arg stays whole — the exact bug a slash round-trip

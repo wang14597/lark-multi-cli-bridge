@@ -2,6 +2,7 @@
 import type { Logger } from 'pino';
 import type { BotConfig } from '../config/schema.js';
 import type { SessionStore } from '../session/store.js';
+import type { TeamStore } from '../session/team.js';
 import type { WorkspaceStore } from '../session/workspace.js';
 import type { CommandRouter, ParsedCommand } from '../commands/router.js';
 import { isAdmin } from '../auth/access-control.js';
@@ -36,6 +37,7 @@ export interface DispatchCommandDeps {
   bot: BotConfig;
   sessions: SessionStore;
   workspaces: WorkspaceStore;
+  teams: TeamStore;
   /** Build the per-chat reply/replyCard closures (worker/index.ts wires Lark). */
   makeReplies: (chatId: string) => ChatReplies;
   log: Logger;
@@ -63,7 +65,7 @@ function renderSlash(cmd: ParsedCommand): string {
  * message means "this click did not complete cleanly", not "nothing happened".
  */
 export function makeDispatchCommand(deps: DispatchCommandDeps): DispatchCommand {
-  const { router, bot, sessions, workspaces, makeReplies, log, appOwnerOpenId } = deps;
+  const { router, bot, sessions, workspaces, teams, makeReplies, log, appOwnerOpenId } = deps;
   return async (cmd, meta) => {
     const admin = isAdmin({
       access: bot.access,
@@ -79,6 +81,7 @@ export function makeDispatchCommand(deps: DispatchCommandDeps): DispatchCommand 
         bot,
         sessions,
         workspaces,
+        teams,
         reply,
         replyCard,
       });
@@ -90,10 +93,7 @@ export function makeDispatchCommand(deps: DispatchCommandDeps): DispatchCommand 
       try {
         await reply(`⚠️ command failed: ${renderSlash(cmd)}`);
       } catch (replyErr) {
-        log.error(
-          { err: (replyErr as Error).message },
-          'card-action fallback reply failed',
-        );
+        log.error({ err: (replyErr as Error).message }, 'card-action fallback reply failed');
       }
     }
   };

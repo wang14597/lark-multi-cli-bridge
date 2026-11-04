@@ -2,7 +2,7 @@
 
 English: [architecture.md](architecture.md)
 
-完整规范见 `docs/superpowers/specs/`。本文是更新至 v0.8.0 的工作摘要。逐次变更历史见 [docs/changes/](changes/INDEX.md)。
+完整规范见 `docs/superpowers/specs/`。本文是更新至 v0.8.0 并含未发布的群团队角色变更的工作摘要。逐次变更历史见 [docs/changes/](changes/INDEX.md)。
 
 ## 进程拓扑
 
@@ -59,11 +59,11 @@ lmcb 通过一个 **PATH shim** 来锁定身份：
 |----------------|------|
 | `cli/` | `lmcb` 入口；通过 Unix socket 把子命令转发给 supervisor |
 | `supervisor/` | fork worker、IPC server、崩溃预算、日志聚合 |
-| `worker/` | 单 bot 生命周期：Lark 事件 → dispatcher → adapter → 流式卡片 |
+| `worker/` | 单 bot 生命周期：Lark 事件 → dispatcher → adapter → 流式卡片。每次运行的 prompt 前缀（异步 `prefixPrompt`）为 `<bridge_context>`，群里设了分工时再加 `<team_roster>`（`team-roster.ts`；队友行带 `<at>` 标签，由各 worker 调群成员接口解析，缓存 10 分钟） |
 | `lark/` | Lark SDK 封装：WebSocket、消息解析、`card-builder.ts`、`markdown-normalize.ts`、`run-state.ts`、`tool-render.ts`、附件下载 |
 | `adapters/` | `ClaudeAdapter` / `CodexAdapter` / `GeminiAdapter`，实现 `AsyncIterable<AdapterEvent>` |
-| `commands/` | 斜杠命令路由 + handler（11 条命令） |
-| `session/` | `SessionStore`（每 bot 一个文件、单写者、内存缓存）+ `WorkspaceStore`（全 bot 共享一个文件、读时透传——不缓存，写为读-改-写）。两者均原子写盘。 |
+| `commands/` | 斜杠命令路由 + handler（12 条命令，含管理员专用的 `/team`，用于群团队分工） |
+| `session/` | `SessionStore`（每 bot 一个文件、单写者、内存缓存）+ `WorkspaceStore`（全 bot 共享一个文件、读时透传——不缓存，写为读-改-写）+ `TeamStore`（按群记录的团队分工，同样是共享的读时透传设计）。均原子写盘。 |
 | `auth/` | 访问控制规则；`register-app.ts` 实现扫码创建应用 |
 | `daemon/` | macOS launchd plist 生成 |
 | `config/` | YAML 加载、zod schema 校验、bots 目录监听与热加载 |
@@ -168,6 +168,7 @@ Worker 的 `Dispatcher` 把事件喂给 `CardStreamer`，后者以 500 ms 或 50
 ├── bots/<name>.yaml                    （per-bot 配置，chmod 600）
 ├── state/sessions/<bot>.json           （每个 bot 一个文件——单写者，兄弟 worker 无法互相覆盖；原子写；按 (chatId,botName)：backend/cwd/sessionId/messageCount + 可选 idleTimeoutMs，即 /timeout 覆盖值。旧的单一 state/sessions.json 在首次加载时按 bot 迁移。）
 ├── state/workspaces.json               （具名 workspace 别名——全部 worker 共享的单一文件，因为在一个 bot 里 `/ws save` 的路径必须能在另一个 bot 里解析。多写者，所以 store 读时透传：每次读都读盘，每次 save/remove 都是只改一个 key 的读-改-写。）
+├── state/teams.json                    （按群记录的团队分工：chatId → bot 名 → 角色，由 `/team` 设置。与 workspaces.json 一样被全部 worker 共享，所以读时透传、按 chat key 做读-改-写。每次运行时以 `<team_roster>` 注入 prompt。）
 ├── state/processes.json
 ├── logs/supervisor.log
 ├── logs/workers/<bot>/YYYY-MM-DD.log   （按日轮转）
