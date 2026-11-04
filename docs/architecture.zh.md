@@ -2,7 +2,7 @@
 
 English: [architecture.md](architecture.md)
 
-完整规范见 `docs/superpowers/specs/`。本文是更新至 v0.8.0 并含未发布的群团队角色变更的工作摘要。逐次变更历史见 [docs/changes/](changes/INDEX.md)。
+完整规范见 `docs/superpowers/specs/`。本文是更新至 v0.8.0 并含未发布的 codex lark-cli profile 固定修复的工作摘要。逐次变更历史见 [docs/changes/](changes/INDEX.md)。
 
 ## 进程拓扑
 
@@ -47,7 +47,9 @@ lmcb 通过一个 **PATH shim** 来锁定身份：
    写入一个可执行包装脚本，内部 `exec` 真实的 `lark-cli` 二进制并强制带上
    `--profile <app_id>` 参数。
 3. dispatcher 把 `PATH=<shim-dir>:$PATH` 注入到每个 LLM 子进程，子进程里所有
-   `lark-cli` 调用都会透明地走到正确的 profile。
+   `lark-cli` 调用都会透明地走到正确的 profile。`CodexAdapter` 还会传
+   `-c allow_login_shell=false`：codex 通过登录 shell 执行命令，macOS 登录 shell
+   对 `PATH` 的重排会把 shim 排到真实 `lark-cli` 后面。
 
 此前曾尝试通过 `LARKSUITE_CLI_APP_ID/SECRET/BRAND` 环境变量注入实现隔离
 （commit ae97924），但在 lark-cli 1.0.43 中证实不可行：这些环境变量虽然被
