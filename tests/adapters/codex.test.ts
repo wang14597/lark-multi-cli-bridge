@@ -51,8 +51,12 @@ describe('CodexAdapter.parseCodexJsonLine', () => {
 
   it('ignores item.completed for non-agent_message item types (reasoning, tool_call)', () => {
     const evs = [
-      ...parseCodexJsonLine('{"type":"item.completed","item":{"id":"r0","type":"reasoning","text":"thinking..."}}'),
-      ...parseCodexJsonLine('{"type":"item.completed","item":{"id":"t0","type":"tool_call","name":"x"}}'),
+      ...parseCodexJsonLine(
+        '{"type":"item.completed","item":{"id":"r0","type":"reasoning","text":"thinking..."}}',
+      ),
+      ...parseCodexJsonLine(
+        '{"type":"item.completed","item":{"id":"t0","type":"tool_call","name":"x"}}',
+      ),
     ];
     expect(evs).toEqual([]);
   });
@@ -125,6 +129,13 @@ describe('CodexAdapter appendSystemPrompt', () => {
     expect(finalPrompt).toBe('USER-PROMPT');
   });
 
+  it('runs shell commands via a non-login shell so the lark-cli shim keeps PATH priority', async () => {
+    const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false });
+    const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
+    expect(args).toContain('allow_login_shell=false');
+    expect(args[args.indexOf('allow_login_shell=false') - 1]).toBe('-c');
+  });
+
   it('includes --skip-git-repo-check by default', async () => {
     const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false });
     const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
@@ -132,13 +143,21 @@ describe('CodexAdapter appendSystemPrompt', () => {
   });
 
   it('includes --skip-git-repo-check when skipGitRepoCheck is true', async () => {
-    const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false, skipGitRepoCheck: true });
+    const adapter = new CodexAdapter({
+      cliPath: ECHO_ARGS_SH,
+      jsonMode: false,
+      skipGitRepoCheck: true,
+    });
     const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
     expect(args).toContain('--skip-git-repo-check');
   });
 
   it('omits --skip-git-repo-check when skipGitRepoCheck is false', async () => {
-    const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false, skipGitRepoCheck: false });
+    const adapter = new CodexAdapter({
+      cliPath: ECHO_ARGS_SH,
+      jsonMode: false,
+      skipGitRepoCheck: false,
+    });
     const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
     expect(args).not.toContain('--skip-git-repo-check');
   });
@@ -205,13 +224,21 @@ describe('CodexAdapter sandbox bypass', () => {
   });
 
   it('injects the bypass flag when bypassSandbox is true', async () => {
-    const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false, bypassSandbox: true });
+    const adapter = new CodexAdapter({
+      cliPath: ECHO_ARGS_SH,
+      jsonMode: false,
+      bypassSandbox: true,
+    });
     const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
     expect(args).toContain(BYPASS_FLAG);
   });
 
   it('omits the bypass flag when bypassSandbox is false', async () => {
-    const adapter = new CodexAdapter({ cliPath: ECHO_ARGS_SH, jsonMode: false, bypassSandbox: false });
+    const adapter = new CodexAdapter({
+      cliPath: ECHO_ARGS_SH,
+      jsonMode: false,
+      bypassSandbox: false,
+    });
     const args = await runAndCaptureArgs(adapter, 'USER-PROMPT');
     expect(args).not.toContain(BYPASS_FLAG);
   });

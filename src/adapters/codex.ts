@@ -51,8 +51,12 @@ export function* parseCodexJsonLine(line: string): Iterable<AdapterEvent> {
       ...(obj.usage
         ? {
             usage: {
-              ...(obj.usage.input_tokens !== undefined ? { inputTokens: obj.usage.input_tokens } : {}),
-              ...(obj.usage.output_tokens !== undefined ? { outputTokens: obj.usage.output_tokens } : {}),
+              ...(obj.usage.input_tokens !== undefined
+                ? { inputTokens: obj.usage.input_tokens }
+                : {}),
+              ...(obj.usage.output_tokens !== undefined
+                ? { outputTokens: obj.usage.output_tokens }
+                : {}),
             },
           }
         : {}),
@@ -80,8 +84,12 @@ export function* parseCodexJsonLine(line: string): Iterable<AdapterEvent> {
       ...(obj.usage
         ? {
             usage: {
-              ...(obj.usage.input_tokens !== undefined ? { inputTokens: obj.usage.input_tokens } : {}),
-              ...(obj.usage.output_tokens !== undefined ? { outputTokens: obj.usage.output_tokens } : {}),
+              ...(obj.usage.input_tokens !== undefined
+                ? { inputTokens: obj.usage.input_tokens }
+                : {}),
+              ...(obj.usage.output_tokens !== undefined
+                ? { outputTokens: obj.usage.output_tokens }
+                : {}),
             },
           }
         : {}),
@@ -160,6 +168,12 @@ export class CodexAdapter implements Adapter {
     if ((this.opts.bypassSandbox ?? true) === true && !userControlsSandbox) {
       baseArgs.push('--dangerously-bypass-approvals-and-sandbox');
     }
+    // codex runs shell commands via a login shell, and macOS's login-shell
+    // PATH reordering pushes the bridge's per-bot lark-cli shim behind the real
+    // binary — codex then uses the default lark profile instead of this bot's.
+    // A non-login shell keeps the inherited PATH (shim first).
+    if (!extraArgs.some((a) => a.startsWith('allow_login_shell=')))
+      baseArgs.push('-c', 'allow_login_shell=false');
     baseArgs.push(...extraArgs);
     // resume subcommand takes SESSION_ID as a positional arg before PROMPT.
     if (ctx.sessionId) baseArgs.push(ctx.sessionId);

@@ -2,7 +2,7 @@
 
 中文版: [architecture.zh.md](architecture.zh.md)
 
-See the canonical design document under `docs/superpowers/specs/` for the full specification. This is a working summary updated through v0.8.0 plus the unreleased group-team-roles change. Granular per-change history lives in [docs/changes/](changes/INDEX.md).
+See the canonical design document under `docs/superpowers/specs/` for the full specification. This is a working summary updated through v0.8.0 plus the unreleased codex lark-cli profile-pin fix. Granular per-change history lives in [docs/changes/](changes/INDEX.md).
 
 ## Process topology
 
@@ -51,7 +51,9 @@ lmcb pins identity via a **PATH shim**:
    `lark-cli` binary with `--profile <app_id>` prepended.
 3. The dispatcher injects `PATH=<shim-dir>:$PATH` into every LLM child, so
    any `lark-cli` call inside the child transparently routes through the
-   correct profile.
+   correct profile. `CodexAdapter` also passes `-c allow_login_shell=false`:
+   codex runs commands through a login shell, and macOS's login-shell `PATH`
+   reordering would otherwise push the shim behind the real `lark-cli`.
 
 This was migrated from a `LARKSUITE_CLI_APP_ID/SECRET/BRAND` env-injection
 approach (commit ae97924) which proved non-functional in lark-cli 1.0.43:
