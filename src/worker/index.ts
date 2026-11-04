@@ -12,16 +12,23 @@ import {
 import { SessionStore } from '../session/store.js';
 import { createLogger } from '../telemetry/logger.js';
 import { buildAdapter } from '../adapters/registry.js';
-import { createLarkClient, fetchAppOwnerOpenId, fetchBotSelfOpenId } from '../lark/client.js';
+import {
+  createLarkClient,
+  fetchAppOwnerOpenId,
+  fetchBotSelfOpenId,
+  fetchChatBots,
+} from '../lark/client.js';
 import { LarkWsClient } from '../lark/ws.js';
 import { adaptLarkLogger } from '../lark/sdk-logger.js';
 import { CardStreamer } from './card-streamer.js';
 import { LarkCardSink } from './lark-sink.js';
 import { Dispatcher } from './dispatcher.js';
+import { buildTeamRoster, makeChatBotsLookup } from './team-roster.js';
 import { buildBridgeContext } from './bridge-context.js';
 import { downloadAttachment } from '../lark/attachment.js';
 import { fetchQuotedContext, asMessageGetClient } from '../lark/fetch-quote.js';
 import type { IngressMessage } from '../lark/types.js';
+import { TeamStore } from '../session/team.js';
 import { WorkspaceStore } from '../session/workspace.js';
 import { CommandRouter } from '../commands/router.js';
 import { makeHelpHandler } from '../commands/handlers/help.js';
@@ -31,6 +38,7 @@ import { cdHandler } from '../commands/handlers/cd.js';
 import { timeoutHandler } from '../commands/handlers/timeout.js';
 import { makeStopHandler } from '../commands/handlers/stop.js';
 import { wsHandler } from '../commands/handlers/ws.js';
+import { teamHandler } from '../commands/handlers/team.js';
 import { abortRegistryFromDispatcher } from './abort-registry.js';
 import { isAuthorized, isAdmin } from '../auth/access-control.js';
 import { accessHandler } from '../commands/handlers/access.js';
@@ -139,6 +147,8 @@ export async function runWorker(botName: string): Promise<void> {
 
   const workspaces = new WorkspaceStore(paths.workspacesJson);
   await workspaces.load();
+  const teams = new TeamStore(paths.teamsJson);
+  const chatBotsOf = makeChatBotsLookup((chatId) => fetchChatBots(client, chatId));
 
   const ws = new LarkWsClient({
     appId: bot.lark.app_id,
@@ -148,7 +158,12 @@ export async function runWorker(botName: string): Promise<void> {
     logger: sdkLogger,
   });
 
-  const reconnector = { reconnect: async (): Promise<void> => { await ws.stop(); await ws.start(); } };
+  const reconnector = {
+    reconnect: async (): Promise<void> => {
+      await ws.stop();
+      await ws.start();
+    },
+  };
 
   const lastIngressByChat = new Map<string, IngressMessage>();
 
@@ -187,10 +202,15 @@ export async function runWorker(botName: string): Promise<void> {
         sessionId,
       });
     },
-    prefixPrompt: (chatId, prompt) => {
+    prefixPrompt: async (chatId, prompt) => {
       const last = lastIngressByChat.get(chatId);
-      if (!last) return prompt;
-      return `${buildBridgeContext(last)}\n\n${prompt}`;
+      const members = await teams.get(chatId);
+      const roster = buildTeamRoster(
+        bot.name,
+        members,
+        Object.keys(members).length > 0 ? await chatBotsOf(chatId) : [],
+      );
+      return [last ? buildBridgeContext(last) : '', roster, prompt].filter(Boolean).join('\n\n');
     },
     // Per-chat idle-timeout override set by /timeout, persisted on the
     // session slot. Falls through to the request's bot-default when unset.
@@ -204,6 +224,7 @@ export async function runWorker(botName: string): Promise<void> {
     cdHandler,
     timeoutHandler,
     wsHandler,
+    teamHandler,
     makeStopHandler(abortRegistryFromDispatcher(dispatcher)),
     accessHandler,
     sessionsHandler,
@@ -226,35 +247,53 @@ export async function runWorker(botName: string): Promise<void> {
     bot,
     sessions,
     workspaces,
+    teams,
     makeReplies,
     log,
     ...(appOwnerOpenId ? { appOwnerOpenId } : {}),
   });
 
-  ws.on('card-action', makeCardActionHandler({
-    access: bot.access,
-    dispatcher,
-    log,
-    lastIngressByChat,
-    sessions,
-    botDefaultCwd: resolveCwd(bot.behavior.default_cwd),
-    botBackendType: bot.backend.type,
-    botName: bot.name,
-    idleTimeoutMs: bot.behavior.idle_timeout_seconds * 1000,
-    dispatchCommand,
-    ...(appOwnerOpenId ? { appOwnerOpenId } : {}),
-  }));
+  ws.on(
+    'card-action',
+    makeCardActionHandler({
+      access: bot.access,
+      dispatcher,
+      log,
+      lastIngressByChat,
+      sessions,
+      botDefaultCwd: resolveCwd(bot.behavior.default_cwd),
+      botBackendType: bot.backend.type,
+      botName: bot.name,
+      idleTimeoutMs: bot.behavior.idle_timeout_seconds * 1000,
+      dispatchCommand,
+      ...(appOwnerOpenId ? { appOwnerOpenId } : {}),
+    }),
+  );
 
   ws.on('message', async (msg: IngressMessage) => {
-    log.info({ chatId: msg.chatId, chatType: msg.chatType, sender: msg.senderOpenId }, 'message received');
+    log.info(
+      { chatId: msg.chatId, chatType: msg.chatType, sender: msg.senderOpenId },
+      'message received',
+    );
 
     if (!msg.text.trim()) return;
 
-    if (!isAuthorized({ access: bot.access, senderOpenId: msg.senderOpenId, chatId: msg.chatId, ...(appOwnerOpenId ? { appOwnerOpenId } : {}) })) {
+    if (
+      !isAuthorized({
+        access: bot.access,
+        senderOpenId: msg.senderOpenId,
+        chatId: msg.chatId,
+        ...(appOwnerOpenId ? { appOwnerOpenId } : {}),
+      })
+    ) {
       log.info({ chatId: msg.chatId, sender: msg.senderOpenId }, 'dropped: unauthorized');
       return;
     }
-    const admin = isAdmin({ access: bot.access, senderOpenId: msg.senderOpenId, ...(appOwnerOpenId ? { appOwnerOpenId } : {}) });
+    const admin = isAdmin({
+      access: bot.access,
+      senderOpenId: msg.senderOpenId,
+      ...(appOwnerOpenId ? { appOwnerOpenId } : {}),
+    });
     const { reply: replyText, replyCard } = makeReplies(msg.chatId);
     const handled = await router.dispatch(msg.text, {
       chatId: msg.chatId,
@@ -263,6 +302,7 @@ export async function runWorker(botName: string): Promise<void> {
       bot,
       sessions,
       workspaces,
+      teams,
       reply: replyText,
       replyCard,
     });
@@ -274,11 +314,10 @@ export async function runWorker(botName: string): Promise<void> {
     // block. The asMessageGetClient cast narrows the full SDK Client down to
     // the slice fetch-quote actually depends on.
     if (msg.parentMessageId) {
-      const quoted = await fetchQuotedContext(
-        asMessageGetClient(client),
-        msg.parentMessageId,
-        { openId: botSelfOpenId ?? '', name: bot.name },
-      );
+      const quoted = await fetchQuotedContext(asMessageGetClient(client), msg.parentMessageId, {
+        openId: botSelfOpenId ?? '',
+        name: bot.name,
+      });
       if (quoted) {
         msg.quoted = quoted;
         log.info(
@@ -301,7 +340,10 @@ export async function runWorker(botName: string): Promise<void> {
         const a = await downloadAttachment({ client, chatId: msg.chatId }, msg.messageId, att);
         downloaded.push(`[Attached ${a.kind}: ${a.localPath}]`);
       } catch (err) {
-        log.warn({ err: (err as Error).message, fileKey: att.fileKey }, 'attachment download failed');
+        log.warn(
+          { err: (err as Error).message, fileKey: att.fileKey },
+          'attachment download failed',
+        );
       }
     }
     const promptText = downloaded.length ? `${msg.text}\n\n${downloaded.join('\n')}` : msg.text;

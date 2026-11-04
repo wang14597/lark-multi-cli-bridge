@@ -26,6 +26,7 @@ function setup(dispatchParsed: (cmd: ParsedCommand, ctx: unknown) => Promise<boo
     bot: makeBot(),
     sessions: {} as CommandCtx['sessions'],
     workspaces: {} as CommandCtx['workspaces'],
+    teams: {} as CommandCtx['teams'],
     makeReplies,
     log: silentLog,
   });
@@ -41,10 +42,13 @@ describe('makeDispatchCommand', () => {
     });
     const { dispatch, replies } = setup(dispatchParsed);
 
-    await dispatch({ name: 'ws', args: ['use', 'foo bar'] }, {
-      chatId: 'oc_chat',
-      operatorOpenId: 'ou_admin',
-    });
+    await dispatch(
+      { name: 'ws', args: ['use', 'foo bar'] },
+      {
+        chatId: 'oc_chat',
+        operatorOpenId: 'ou_admin',
+      },
+    );
 
     expect(calls).toHaveLength(1);
     expect(calls[0]!.cmd).toEqual({ name: 'ws', args: ['use', 'foo bar'] });
@@ -64,10 +68,13 @@ describe('makeDispatchCommand', () => {
       return true;
     });
     const { dispatch } = setup(dispatchParsed);
-    await dispatch({ name: 'status', args: [] }, {
-      chatId: 'oc_chat',
-      operatorOpenId: 'ou_stranger',
-    });
+    await dispatch(
+      { name: 'status', args: [] },
+      {
+        chatId: 'oc_chat',
+        operatorOpenId: 'ou_stranger',
+      },
+    );
     expect(seenAdmin).toBe(false);
   });
 
@@ -90,10 +97,13 @@ describe('makeDispatchCommand', () => {
       throw new Error('boom');
     });
     const { dispatch, replies } = setup(dispatchParsed);
-    await dispatch({ name: 'ws', args: ['use', 'foo bar'] }, {
-      chatId: 'oc_chat',
-      operatorOpenId: 'ou_admin',
-    });
+    await dispatch(
+      { name: 'ws', args: ['use', 'foo bar'] },
+      {
+        chatId: 'oc_chat',
+        operatorOpenId: 'ou_admin',
+      },
+    );
     expect(replies).toEqual(['⚠️ command failed: /ws use foo bar']);
   });
 
@@ -109,6 +119,7 @@ describe('makeDispatchCommand', () => {
       bot: makeBot(),
       sessions: {} as CommandCtx['sessions'],
       workspaces: {} as CommandCtx['workspaces'],
+      teams: {} as CommandCtx['teams'],
       makeReplies: () => ({ reply, replyCard: async () => {} }),
       log: silentLog,
     });

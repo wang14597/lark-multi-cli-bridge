@@ -16,6 +16,8 @@ export const paths = {
   // owns its own file — no cross-process last-writer-wins clobber.
   sessionsDir: join(root, 'state', 'sessions'),
   workspacesJson: join(root, 'state', 'workspaces.json'),
+  // Per-group team roster (chatId → bot → role), shared by every worker.
+  teamsJson: join(root, 'state', 'teams.json'),
   processesJson: join(root, 'state', 'processes.json'),
   logs: join(root, 'logs'),
   supervisorLog: join(root, 'logs', 'supervisor.log'),

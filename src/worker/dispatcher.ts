@@ -17,14 +17,17 @@ export interface DispatcherOpts {
   // out as a top-level message. The dispatcher passes the LATEST batched
   // request's replyToMessageId so the reply quotes the most recent user
   // message rather than the head of a coalesced burst.
-  makeStreamer: (chatId: string, replyTo?: string) => Pick<
+  makeStreamer: (
+    chatId: string,
+    replyTo?: string,
+  ) => Pick<
     CardStreamer,
     'start' | 'onTextDelta' | 'onToolCall' | 'onToolResult' | 'onError' | 'onDone' | 'onInterrupted'
   >;
   onSessionUpdate: (chatId: string, sessionId: string) => void;
   batchWindowMs?: number;
   resolveIdleTimeoutMs?: (chatId: string) => number | undefined;
-  prefixPrompt?: (chatId: string, prompt: string) => string;
+  prefixPrompt?: (chatId: string, prompt: string) => string | Promise<string>;
   // Env merged into every adapter.run() invocation. Per-request env wins on
   // key collision. Use for static per-worker identity injection — today this
   // is a PATH prefix pointing at the bot's lark-cli profile shim (see
@@ -130,7 +133,7 @@ export class Dispatcher {
     const startedAt = Date.now();
     const overrideIdle = this.opts.resolveIdleTimeoutMs?.(req.chatId);
     const idleMs = overrideIdle ?? req.idleTimeoutMs;
-    const prompt = this.opts.prefixPrompt?.(req.chatId, req.prompt) ?? req.prompt;
+    const prompt = (await this.opts.prefixPrompt?.(req.chatId, req.prompt)) ?? req.prompt;
 
     const mergedEnv =
       this.opts.extraEnv || req.env

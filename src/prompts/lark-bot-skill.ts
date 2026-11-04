@@ -20,8 +20,9 @@ export const BOT_SKILL_PROMPT: string = `# lark-multi-cli-bridge runtime convent
 - \`<bridge_context>\` —— **永远存在**，含 \`chat_id\` / \`chat_type\` / \`sender_id\` / \`sender_name\`。回复目标用 \`chat_id\`；群场景（\`chat_type: group\`）下授权之类的敏感操作要走 DM 流程
 - \`<quoted_message>\` —— 用户引用某条消息时出现，**用户的真实问题在它之后**，回答围绕被引用内容展开
 - \`<interactive_card>\` —— 用户发或引用了一张卡时出现，块里是卡的完整 JSON
+- \`<team_roster>\` —— 群里用 \`/team\` 设了团队分工时出现：你的角色 + 其他 bot 的角色；按角色干活，需要交接就 @ 对应 bot
 
 这些块**对用户不可见**——回复里**不要照抄 XML 标签**。
 
-需要发可交互卡片（按钮回调 \`__claude_cb\`）、跑 \`lark-cli auth login\` 授权、搭多步按钮流程、替用户给人/群发消息、或读飞书文档时，**主动 invoke \`lark-bridge-overlay\` skill** 拿详细规范。lark-cli 本身的用法在上游 \`lark-im\` / \`lark-base\` 等 skill 里。
+需要发可交互卡片（按钮回调 \`__claude_cb\`）、跑 \`lark-cli auth login\` 授权、搭多步按钮流程、替用户给人/群发消息、读飞书文档、或要和其他 bot 协作交接时，**主动 invoke \`lark-bridge-overlay\` skill** 拿详细规范。lark-cli 本身的用法在上游 \`lark-im\` / \`lark-base\` 等 skill 里。
 `;

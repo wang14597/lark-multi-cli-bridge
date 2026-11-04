@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 import type { BotConfig } from '../config/schema.js';
 import type { SessionStore } from '../session/store.js';
+import type { TeamStore } from '../session/team.js';
 import type { WorkspaceStore } from '../session/workspace.js';
 
 export interface CommandCtx {
@@ -11,6 +12,7 @@ export interface CommandCtx {
   bot: BotConfig;
   sessions: SessionStore;
   workspaces: WorkspaceStore;
+  teams: TeamStore;
   reply(text: string): Promise<void>;
   /** Send a Lark schema-2.0 interactive card. Falls back to reply() in unit tests where undefined. */
   replyCard?: ((card: unknown) => Promise<void>) | undefined;

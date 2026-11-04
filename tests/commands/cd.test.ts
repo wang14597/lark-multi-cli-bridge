@@ -33,6 +33,7 @@ function makeCtx(args: string[], sessions: SessionStore) {
     bot: { name: 'codex-bot', backend: { type: 'codex' } } as CommandCtx['bot'],
     sessions,
     workspaces: {} as CommandCtx['workspaces'],
+    teams: {} as CommandCtx['teams'],
     reply: async (t: string) => void replies.push(t),
   };
   return { ctx, replies };

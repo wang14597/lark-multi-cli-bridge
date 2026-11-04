@@ -2,7 +2,7 @@
 
 中文版: [architecture.zh.md](architecture.zh.md)
 
-See the canonical design document under `docs/superpowers/specs/` for the full specification. This is a working summary updated through v0.8.0. Granular per-change history lives in [docs/changes/](changes/INDEX.md).
+See the canonical design document under `docs/superpowers/specs/` for the full specification. This is a working summary updated through v0.8.0 plus the unreleased group-team-roles change. Granular per-change history lives in [docs/changes/](changes/INDEX.md).
 
 ## Process topology
 
@@ -63,11 +63,11 @@ the env vars are recognised but never mint a usable bot token.
 |-----------------|----------------|
 | `cli/` | `lmcb` entrypoint; routes subcommands through the Unix socket to the supervisor |
 | `supervisor/` | Worker fork/respawn, IPC server, crash budget, log aggregation |
-| `worker/` | Single-bot lifecycle: Lark events → dispatcher → adapter → streaming card |
+| `worker/` | Single-bot lifecycle: Lark events → dispatcher → adapter → streaming card. Each run's prompt is prefixed (async `prefixPrompt`) with `<bridge_context>` and, when the group has a roster, `<team_roster>` (`team-roster.ts`; teammate lines carry an `<at>` mention tag resolved per worker via the chat-members API, cached 10 min) |
 | `lark/` | Lark SDK wrapper: WebSocket, message parsing, `card-builder.ts`, `markdown-normalize.ts`, `run-state.ts`, `tool-render.ts`, attachment download |
 | `adapters/` | `ClaudeAdapter` / `CodexAdapter` / `GeminiAdapter` implementing `AsyncIterable<AdapterEvent>` |
-| `commands/` | Slash-command router and handlers (11 commands) |
-| `session/` | `SessionStore` (one file per bot, single writer, cached in memory) + `WorkspaceStore` (one file shared by all bots, read-through — no cache, mutations are read-modify-write). Both use atomic writes. |
+| `commands/` | Slash-command router and handlers (12 commands, incl. admin-only `/team` for the group roster) |
+| `session/` | `SessionStore` (one file per bot, single writer, cached in memory) + `WorkspaceStore` (one file shared by all bots, read-through — no cache, mutations are read-modify-write) + `TeamStore` (per-group roster, same shared read-through design). All use atomic writes. |
 | `auth/` | Access control rules; `register-app.ts` for scan-to-create QR provisioning |
 | `daemon/` | macOS launchd plist generation |
 | `config/` | YAML loading, zod schema validation, bots-dir watcher with hot-reload |
@@ -172,6 +172,7 @@ Tool detail (full input + output) is intentionally not surfaced in the card — 
 ├── bots/<name>.yaml                    (per-bot config, chmod 600)
 ├── state/sessions/<bot>.json           (one file PER BOT — single writer, so sibling workers can't clobber each other; atomic writes; per (chatId,botName): backend/cwd/sessionId/messageCount + optional idleTimeoutMs /timeout override. Legacy single state/sessions.json is migrated per-bot on first load.)
 ├── state/workspaces.json               (named workspace aliases — ONE file shared by every worker, because `/ws save` in one bot must resolve from another. Many writers, so the store is read-through: every read hits disk and every save/remove is a read-modify-write of one key.)
+├── state/teams.json                    (per-group team roster: chatId → bot name → role, set by `/team`. Shared by every worker like workspaces.json, so read-through with per-chat-key read-modify-write. Injected into each run's prompt as `<team_roster>`.)
 ├── state/processes.json
 ├── logs/supervisor.log
 ├── logs/workers/<bot>/YYYY-MM-DD.log   (rotated daily)
