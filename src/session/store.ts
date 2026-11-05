@@ -91,12 +91,14 @@ export class SessionStore {
     // Preserve a per-chat /timeout override across upserts unless the caller
     // explicitly sets a new one — it's a chat preference, not per-session-id.
     const idleTimeoutMs = patch.idleTimeoutMs ?? existing?.idleTimeoutMs;
+    const outputMode = patch.outputMode ?? existing?.outputMode;
     const next: ChatSession = {
       backend: patch.backend,
       bot: patch.bot,
       cwd: patch.cwd,
       ...(sessionId !== undefined ? { sessionId } : {}),
       ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
+      ...(outputMode !== undefined ? { outputMode } : {}),
       lastUsedAt: new Date().toISOString(),
       messageCount: (existing?.messageCount ?? 0) + 1,
     };
@@ -157,6 +159,23 @@ export class SessionStore {
     this.data.chats[chatId]![botName] = {
       ...rest,
       ...(ms !== undefined ? { idleTimeoutMs: ms } : {}),
+      lastUsedAt: new Date().toISOString(),
+    };
+    await this.persist();
+  }
+
+  /** Set the per-chat output mode; 'stream' is the default so it removes the field. */
+  async setOutputMode(
+    chatId: string,
+    botName: string,
+    mode: 'stream' | 'final',
+  ): Promise<void> {
+    const existing = this.data.chats[chatId]?.[botName];
+    if (!existing) throw new Error(`chat not initialized: ${chatId} / ${botName}`);
+    const { outputMode: _drop, ...rest } = existing;
+    this.data.chats[chatId]![botName] = {
+      ...rest,
+      ...(mode === 'final' ? { outputMode: mode } : {}),
       lastUsedAt: new Date().toISOString(),
     };
     await this.persist();

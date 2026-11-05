@@ -36,6 +36,7 @@ import { statusHandler } from '../commands/handlers/status.js';
 import { newHandler } from '../commands/handlers/new.js';
 import { cdHandler } from '../commands/handlers/cd.js';
 import { timeoutHandler } from '../commands/handlers/timeout.js';
+import { modeHandler } from '../commands/handlers/mode.js';
 import { makeStopHandler } from '../commands/handlers/stop.js';
 import { wsHandler } from '../commands/handlers/ws.js';
 import { teamHandler } from '../commands/handlers/team.js';
@@ -223,6 +224,7 @@ export async function runWorker(botName: string): Promise<void> {
     newHandler,
     cdHandler,
     timeoutHandler,
+    modeHandler,
     wsHandler,
     teamHandler,
     makeStopHandler(abortRegistryFromDispatcher(dispatcher)),
