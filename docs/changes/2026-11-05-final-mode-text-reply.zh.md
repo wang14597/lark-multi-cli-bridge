@@ -31,6 +31,8 @@ slug: final-mode-text-reply
 
 - **结论不再附加任何提示词（用户决定）。** 原来结论带有写作要求（JSON schema 字段的说明文字，最初限制 1–5 句话——试用中让 bot 按点列出时，24 条被压成了一段话），Gemini 还会在 prompt 末尾追加一句提示。用户不希望有任何额外提示词：`CONCLUSION_SCHEMA` 现在只是一个不带说明的 `{conclusion: string}`，`CONCLUSION_GUIDANCE` / `CONCLUSION_PROMPT_HINT` 已删除，Gemini 的 prompt 不再改动（结论仍取最后一次工具调用之后的文字）。已用 claude 2.1.283 实测：不带说明的 schema 仍会给出完整回答，Markdown 列表和换行都保留。
 
+- **标题和表格改写成普通消息能显示的形式。** post 消息的 `md` 元素支持加粗、列表、链接、引用和代码，但不支持标题和表格——试用中带 `#` 标题和表格的结论原样显示成了符号。`toPostMarkdown`（`src/lark/conclusion-post.ts`）现在把标题转成加粗的一行，把表格转成加粗表头加每行一个列表项（单元格用 ` · ` 连接）；代码块内不动。
+
 ## 涉及文件
 
 - `src/lark/conclusion-post.ts` — 新增：`renderConclusionPost`，取代已删除的 `conclusion-card.ts`。

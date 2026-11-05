@@ -37,6 +37,8 @@ Lark push notification (only new messages do); a new reply message brings the ph
 
 - **No prompt text for the conclusion (user decision).** The conclusion used to come with written guidance (a JSON-schema field description, first capped at 1–5 sentences — in trial a requested list of 24 items got squeezed into one paragraph) and Gemini got a closing hint appended to its prompt. The user wants no extra prompt at all: `CONCLUSION_SCHEMA` is now a bare `{conclusion: string}` with no description, `CONCLUSION_GUIDANCE` / `CONCLUSION_PROMPT_HINT` are removed, and Gemini's prompt is untouched (its conclusion is still the text after its last tool call). Verified live with claude 2.1.283: the bare schema still yields the full answer with its Markdown list and line breaks.
 
+- **Headings and tables are rewritten for the post message.** A post's `md` element renders bold, lists, links, quotes and code but not headings or tables — in trial a conclusion with `#` headings and GFM tables showed up raw. `toPostMarkdown` (`src/lark/conclusion-post.ts`) now turns a heading into a bold line and a table into a bold header line plus one bullet per row (cells joined with ` · `); fenced code is untouched.
+
 ## Files touched
 
 - `src/lark/conclusion-post.ts` — new: `renderConclusionPost`; replaces the deleted `conclusion-card.ts`.
