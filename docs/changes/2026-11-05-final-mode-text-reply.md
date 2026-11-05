@@ -35,7 +35,7 @@ Lark push notification (only new messages do); a new reply message brings the ph
   `card-builder.ts` `stopButton` is private again; the worker builds a
   `LarkReplySink` for final mode and a `LarkCardSink` for stream mode.
 
-- **Conclusion guidance honours a requested format.** `CONCLUSION_GUIDANCE` (`src/adapters/conclusion.ts`) no longer hard-caps the conclusion at 1–5 sentences: that stays the default, but when the user asks for a format or content ("按点列出", a checklist, the full text) the model must give it in full as a Markdown list. Found in trial: asked to list points, the bot squeezed 24 items into one paragraph. Verified live with claude 2.1.283: the same kind of request now returns a numbered list.
+- **No length or form limit on the conclusion (user decision).** `CONCLUSION_GUIDANCE` (`src/adapters/conclusion.ts`) used to cap the conclusion at 1–5 sentences; in trial, asked to list points, the bot squeezed 24 items into one paragraph. The user does not want any length/form requirement, so the guidance now only says: the full final reply the model would normally give, keeping its Markdown layout (headings, lists, line breaks), readable on its own.
 
 ## Files touched
 
