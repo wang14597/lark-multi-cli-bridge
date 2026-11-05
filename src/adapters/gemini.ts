@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { spawnWithLifecycle } from './base.js';
+import { CONCLUSION_PROMPT_HINT } from './conclusion.js';
 import type { Adapter, AdapterEvent, AdapterPreflight, RunContext } from './types.js';
 
 // Matches CSI/SGR ANSI escape sequences. The \x1b control character is the
@@ -192,9 +193,11 @@ export class GeminiAdapter implements Adapter {
 
     // gemini -p has no native system-instruction flag, so prepend
     // the system prompt to ctx.prompt with a '\n\n---\n\n' separator.
-    const finalPrompt = this.opts.appendSystemPrompt
+    const basePrompt = this.opts.appendSystemPrompt
       ? `${this.opts.appendSystemPrompt}\n\n---\n\n${ctx.prompt}`
       : ctx.prompt;
+    // No structured output in gemini: ask for a closing conclusion instead.
+    const finalPrompt = ctx.conclusion ? basePrompt + CONCLUSION_PROMPT_HINT : basePrompt;
 
     const args: string[] = [];
     if (jsonMode) args.push('-o', 'stream-json');
@@ -220,6 +223,8 @@ export class GeminiAdapter implements Adapter {
     let finalText = '';
     let sessionId = ctx.sessionId ?? '';
     let doneEmitted = false;
+    // Text since the last tool call — the conclusion candidate.
+    let tailText = '';
 
     try {
       for await (const line of spawnWithLifecycle(this.opts.cliPath ?? 'gemini', args, {
@@ -231,15 +236,21 @@ export class GeminiAdapter implements Adapter {
         if (jsonMode) {
           for (const ev of parseGeminiJsonLine(line)) {
             if (ev.type === 'session-start') sessionId = ev.sessionId;
-            if (ev.type === 'text-delta') finalText += ev.text;
+            if (ev.type === 'text-delta') {
+              finalText += ev.text;
+              tailText += ev.text;
+            }
+            if (ev.type === 'tool-call') tailText = '';
             if (ev.type === 'done') {
               doneEmitted = true;
+              const conclusion = ctx.conclusion ? tailText.trim() : '';
               // Patch in the running sessionId + accumulated finalText —
               // result.success doesn't carry them per-line.
               yield {
                 ...ev,
                 sessionId: ev.sessionId || sessionId,
                 finalText: ev.finalText || finalText,
+                ...(conclusion ? { conclusion } : {}),
               };
               continue;
             }

@@ -20,6 +20,7 @@ export interface DispatcherOpts {
   makeStreamer: (
     chatId: string,
     replyTo?: string,
+    mode?: 'stream' | 'final',
   ) => Pick<
     CardStreamer,
     'start' | 'onTextDelta' | 'onToolCall' | 'onToolResult' | 'onError' | 'onDone' | 'onInterrupted'
@@ -27,6 +28,9 @@ export interface DispatcherOpts {
   onSessionUpdate: (chatId: string, sessionId: string) => void;
   batchWindowMs?: number;
   resolveIdleTimeoutMs?: (chatId: string) => number | undefined;
+  // Per-chat output mode (set by /mode). Resolved per run, not at enqueue, so
+  // synthesized requests (card-button callbacks) honour it too.
+  resolveOutputMode?: (chatId: string) => 'stream' | 'final' | undefined;
   prefixPrompt?: (chatId: string, prompt: string) => string | Promise<string>;
   // Env merged into every adapter.run() invocation. Per-request env wins on
   // key collision. Use for static per-worker identity injection — today this
@@ -128,7 +132,8 @@ export class Dispatcher {
   }
 
   private async dispatchOne(req: DispatchRequest, signal: AbortSignal): Promise<void> {
-    const streamer = this.opts.makeStreamer(req.chatId, req.replyToMessageId);
+    const mode = this.opts.resolveOutputMode?.(req.chatId);
+    const streamer = this.opts.makeStreamer(req.chatId, req.replyToMessageId, mode);
     await streamer.start();
     const startedAt = Date.now();
     const overrideIdle = this.opts.resolveIdleTimeoutMs?.(req.chatId);
@@ -139,6 +144,7 @@ export class Dispatcher {
       this.opts.extraEnv || req.env
         ? { ...(this.opts.extraEnv ?? {}), ...(req.env ?? {}) }
         : undefined;
+    let terminal = false;
     try {
       for await (const ev of this.opts.adapter.run({
         prompt,
@@ -146,6 +152,7 @@ export class Dispatcher {
         ...(req.sessionId !== undefined ? { sessionId: req.sessionId } : {}),
         signal,
         idleTimeoutMs: idleMs,
+        ...(mode === 'final' ? { conclusion: true } : {}),
         ...(mergedEnv !== undefined ? { env: mergedEnv } : {}),
       })) {
         switch (ev.type) {
@@ -162,6 +169,7 @@ export class Dispatcher {
             streamer.onToolResult(ev.callId, ev.ok, ev.summary);
             break;
           case 'error':
+            terminal = true;
             if (signal.aborted && signal.reason instanceof UserStopError) {
               await streamer.onInterrupted('user_stop');
             } else {
@@ -169,14 +177,22 @@ export class Dispatcher {
             }
             break;
           case 'done':
+            terminal = true;
             this.opts.onSessionUpdate(req.chatId, ev.sessionId);
             await streamer.onDone({
               finalText: ev.finalText,
               durationMs: Date.now() - startedAt,
               ...(ev.usage !== undefined ? { usage: ev.usage } : {}),
+              ...(ev.conclusion !== undefined ? { conclusion: ev.conclusion } : {}),
+              ...(ev.isError !== undefined ? { isError: ev.isError } : {}),
             });
             break;
         }
+      }
+      // A stream that ends with no done/error (e.g. claude result without session_id)
+      // must not leave the final-mode status card on "处理中…" forever.
+      if (!terminal && !signal.aborted && mode === 'final') {
+        await streamer.onError('运行结束但没有返回结果');
       }
     } catch (err) {
       if (err instanceof UserStopError) {

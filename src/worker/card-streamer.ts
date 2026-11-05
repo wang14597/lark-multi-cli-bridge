@@ -83,7 +83,14 @@ export class CardStreamer {
     await this.flush({ force: true });
   }
 
-  async onDone(opts: { finalText: string; durationMs: number; usage?: { inputTokens?: number; outputTokens?: number } }): Promise<void> {
+  async onDone(opts: {
+    finalText: string;
+    durationMs: number;
+    usage?: { inputTokens?: number; outputTokens?: number };
+    // Conclusion-mode fields; ignored here, accepted so both streamers share one shape.
+    conclusion?: string;
+    isError?: boolean;
+  }): Promise<void> {
     // If the final text is longer than what we've accumulated, replace last text block.
     if (opts.finalText) {
       const lastBlock = this.state.blocks[this.state.blocks.length - 1];

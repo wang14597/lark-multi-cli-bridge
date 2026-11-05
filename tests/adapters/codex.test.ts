@@ -1,13 +1,23 @@
 // SPDX-License-Identifier: MIT
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CodexAdapter, parseCodexJsonLine, parsePlainChunk } from '../../src/adapters/codex.js';
+import { CONCLUSION_SCHEMA } from '../../src/adapters/conclusion.js';
 import type { AdapterEvent, RunContext } from '../../src/adapters/types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+// Fixtures json-tools.jsonl / json-schema.jsonl were recorded with codex-cli
+// 0.162.1 (scripts/record-cli-fixture.sh). Observed item types:
+//   agent_message     { id, type, text }  (item.completed only)
+//   command_execution { id, type, command, aggregated_output, exit_code, status }
+//                     (item.started: exit_code null, status in_progress;
+//                      item.completed: exit_code 0, status completed)
+// json-schema.jsonl adds `--output-schema`: its last agent_message text is
+// the JSON string {"conclusion":"…"}. No `reasoning` items were emitted.
 
 function eventsFromJsonFixture(name: string): AdapterEvent[] {
   const lines = readFileSync(join(HERE, '__fixtures__/codex', name), 'utf8')
@@ -49,16 +59,46 @@ describe('CodexAdapter.parseCodexJsonLine', () => {
     expect(evs).toEqual([]);
   });
 
-  it('ignores item.completed for non-agent_message item types (reasoning, tool_call)', () => {
+  it('ignores item.completed for unknown item types', () => {
     const evs = [
-      ...parseCodexJsonLine(
-        '{"type":"item.completed","item":{"id":"r0","type":"reasoning","text":"thinking..."}}',
-      ),
       ...parseCodexJsonLine(
         '{"type":"item.completed","item":{"id":"t0","type":"tool_call","name":"x"}}',
       ),
     ];
     expect(evs).toEqual([]);
+  });
+
+  it('maps reasoning items to thinking', () => {
+    const evs = [
+      ...parseCodexJsonLine(
+        '{"type":"item.completed","item":{"id":"r0","type":"reasoning","text":"thinking..."}}',
+      ),
+    ];
+    expect(evs).toEqual([{ type: 'thinking', text: 'thinking...' }]);
+  });
+
+  it('maps command_execution started/completed to a tool-call/tool-result pair', () => {
+    const events = eventsFromJsonFixture('json-tools.jsonl');
+    const call = events.find((e) => e.type === 'tool-call');
+    const result = events.find((e) => e.type === 'tool-result');
+    expect(call).toMatchObject({ type: 'tool-call', callId: 'item_1', name: 'Bash' });
+    if (call?.type === 'tool-call') expect(call.input).toMatchObject({ command: '/bin/zsh -c ls' });
+    expect(result).toEqual({
+      type: 'tool-result',
+      callId: 'item_1',
+      name: 'Bash',
+      ok: true,
+      summary: 'a.txt\nb.md\nc.json\nsub\n',
+    });
+  });
+
+  it('marks a failed command_execution as ok=false', () => {
+    const [ev] = [
+      ...parseCodexJsonLine(
+        '{"type":"item.completed","item":{"id":"x","type":"command_execution","command":"false","aggregated_output":"","exit_code":1,"status":"failed"}}',
+      ),
+    ];
+    expect(ev).toMatchObject({ type: 'tool-result', ok: false });
   });
 });
 
@@ -289,6 +329,170 @@ describe('CodexAdapter jsonMode stream-end done fallback', () => {
       for await (const ev of adapter.run(ctx)) events.push(ev);
       const doneEvents = events.filter((e) => e.type === 'done');
       expect(doneEvents.length).toBe(1);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('CodexAdapter run() over recorded item streams', () => {
+  const CAT_SH = join(HERE, '__fixtures__/cat-fixture.sh');
+
+  async function runFixture(
+    fixture: string,
+    extra: Partial<RunContext> = {},
+  ): Promise<{ events: AdapterEvent[]; args: string[] }> {
+    const tmp = mkdtempSync(join(tmpdir(), 'codex-test-'));
+    const outFile = join(tmp, 'args.txt');
+    try {
+      const adapter = new CodexAdapter({ cliPath: CAT_SH });
+      const ctx: RunContext = {
+        prompt: 'USER-PROMPT',
+        cwd: tmp,
+        signal: new AbortController().signal,
+        idleTimeoutMs: 5000,
+        env: {
+          FIXTURE_FILE: isAbsolute(fixture) ? fixture : join(HERE, '__fixtures__/codex', fixture),
+          ECHO_ARGS_OUT: outFile,
+        },
+        ...extra,
+      };
+      const events: AdapterEvent[] = [];
+      for await (const ev of adapter.run(ctx)) events.push(ev);
+      return { events, args: readFileSync(outFile, 'utf8').split('\0').slice(0, -1) };
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+
+  const lastDone = (events: AdapterEvent[]) => {
+    const d = events[events.length - 1];
+    if (d?.type !== 'done') throw new Error('last event is not done');
+    return d;
+  };
+
+  // Writes a variant of a recorded fixture (whole lines dropped / one field
+  // edited) to a temp file and returns its path.
+  function derivedFixture(
+    tmp: string,
+    from: string,
+    edit: (o: { item?: { id?: string; type?: string; text?: string } }) => unknown,
+  ): string {
+    const lines = readFileSync(join(HERE, '__fixtures__/codex', from), 'utf8')
+      .split('\n')
+      .filter((l) => l.trim())
+      .map((l) => edit(JSON.parse(l)))
+      .filter((o) => o !== undefined)
+      .map((o) => JSON.stringify(o));
+    const f = join(tmp, 'derived.jsonl');
+    writeFileSync(f, lines.join('\n') + '\n');
+    return f;
+  }
+
+  it('yields tool events between messages without a paragraph prefix; finalText = last message', async () => {
+    const { events } = await runFixture('json-tools.jsonl');
+    expect(events.map((e) => e.type)).toEqual([
+      'session-start',
+      'text-delta',
+      'tool-call',
+      'tool-result',
+      'tool-call',
+      'tool-result',
+      'text-delta',
+      'done',
+    ]);
+    const deltas = events.flatMap((e) => (e.type === 'text-delta' ? [e.text] : []));
+    // a tool block already closes the card's text block, so no prefix here
+    expect(deltas[1]).toBe('当前目录有 3 个文件（不含子目录 `sub`）。');
+    const done = lastDone(events);
+    expect(done.finalText).toBe('当前目录有 3 个文件（不含子目录 `sub`）。');
+    expect(done).not.toHaveProperty('conclusion');
+  });
+
+  it('separates two consecutive agent messages with a blank line', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'codex-consec-'));
+    try {
+      const f = derivedFixture(tmp, 'json-tools.jsonl', (o) =>
+        o.item?.type === 'command_execution' ? undefined : o,
+      );
+      const { events } = await runFixture(f);
+      const deltas = events.flatMap((e) => (e.type === 'text-delta' ? [e.text] : []));
+      expect(deltas.join('')).toBe(
+        '我先运行 `ls` 查看当前目录，再统计其中的文件数量。\n\n\n当前目录有 3 个文件（不含子目录 `sub`）。',
+      );
+      expect(lastDone(events).finalText).toBe('当前目录有 3 个文件（不含子目录 `sub`）。');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the paragraph break across an unrendered reasoning item', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'codex-reason-'));
+    try {
+      const f = derivedFixture(tmp, 'json-tools.jsonl', (o) => {
+        if (o.item?.type !== 'command_execution') return o;
+        return o.item.id === 'item_1' && (o as { type?: string }).type === 'item.completed'
+          ? { ...o, item: { id: 'r1', type: 'reasoning', text: 'hmm' } }
+          : undefined;
+      });
+      const { events } = await runFixture(f);
+      expect(events.map((e) => e.type)).toContain('thinking');
+      const deltas = events.flatMap((e) => (e.type === 'text-delta' ? [e.text] : []));
+      expect(deltas[1]!.startsWith('\n\n')).toBe(true);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('re-creates the schema file if it was removed between runs', async () => {
+    const first = await runFixture('json-schema.jsonl', { conclusion: true });
+    const f1 = first.args[first.args.indexOf('--output-schema') + 1]!;
+    expect(f1).toContain(`lmcb-conclusion-schema-${process.pid}`);
+    rmSync(f1, { force: true });
+    const second = await runFixture('json-schema.jsonl', { conclusion: true });
+    const f2 = second.args[second.args.indexOf('--output-schema') + 1]!;
+    expect(JSON.parse(readFileSync(f2, 'utf8'))).toEqual(CONCLUSION_SCHEMA);
+  });
+
+  it('extracts the conclusion from --output-schema JSON when conclusion mode is on', async () => {
+    const { events, args } = await runFixture('json-schema.jsonl', { conclusion: true });
+    expect(lastDone(events).conclusion).toBe('当前目录有 3 个文件（不含子目录 `sub`）。');
+    expect(args).toContain('--output-schema');
+    const schemaFile = args[args.indexOf('--output-schema') + 1]!;
+    expect(JSON.parse(readFileSync(schemaFile, 'utf8'))).toEqual(CONCLUSION_SCHEMA);
+    // flag precedes the positional prompt
+    expect(args.indexOf('--output-schema')).toBeLessThan(args.lastIndexOf('USER-PROMPT'));
+  });
+
+  it('falls back to the plain last message as conclusion (resumed run answering in prose)', async () => {
+    const { events, args } = await runFixture('json-tools.jsonl', {
+      conclusion: true,
+      sessionId: 'thread-abc',
+    });
+    expect(lastDone(events).conclusion).toBe('当前目录有 3 个文件（不含子目录 `sub`）。');
+    expect(args.slice(0, 2)).toEqual(['exec', 'resume']);
+    expect(args.indexOf('--output-schema')).toBeLessThan(args.indexOf('thread-abc'));
+  });
+
+  it('omits --output-schema without conclusion mode (fresh and resumed)', async () => {
+    expect((await runFixture('json-tools.jsonl')).args).not.toContain('--output-schema');
+    expect((await runFixture('json-tools.jsonl', { sessionId: 's1' })).args).not.toContain(
+      '--output-schema',
+    );
+  });
+
+  it('leaves conclusion unset when the last message is truncated JSON', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'codex-trunc-'));
+    try {
+      // derived from the recorded fixture: last agent_message cut mid-JSON
+      const f = derivedFixture(tmp, 'json-schema.jsonl', (o) => {
+        if (o.item?.id === 'item_3') o.item.text = '{"conclusion":';
+        return o;
+      });
+      const { events } = await runFixture(f, { conclusion: true });
+      const done = lastDone(events);
+      expect(done).not.toHaveProperty('conclusion');
+      expect(done.finalText).toBe('{"conclusion":');
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

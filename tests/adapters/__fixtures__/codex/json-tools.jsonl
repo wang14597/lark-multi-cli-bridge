@@ -1,0 +1,9 @@
+{"type":"thread.started","thread_id":"01a1aa92-b8aa-7fd1-8f25-e5f141e84432"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"我先运行 `ls` 查看当前目录，再统计其中的文件数量。\n"}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -c ls","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -c ls","aggregated_output":"a.txt\nb.md\nc.json\nsub\n","exit_code":0,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"/bin/zsh -c 'find . -maxdepth 1 -type f ! -name '\"'.*' | wc -l\"","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"/bin/zsh -c 'find . -maxdepth 1 -type f ! -name '\"'.*' | wc -l\"","aggregated_output":"       3\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"当前目录有 3 个文件（不含子目录 `sub`）。"}}
+{"type":"turn.completed","usage":{"input_tokens":37174,"cached_input_tokens":7936,"cache_write_input_tokens":0,"output_tokens":106,"reasoning_output_tokens":0}}

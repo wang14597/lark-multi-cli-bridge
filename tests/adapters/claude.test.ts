@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseClaudeLine } from '../../src/adapters/claude.js';
-import type { AdapterEvent } from '../../src/adapters/types.js';
+import { ClaudeAdapter, parseClaudeLine } from '../../src/adapters/claude.js';
+import type { AdapterEvent, RunContext } from '../../src/adapters/types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -138,5 +139,79 @@ describe('ClaudeAdapter.parseClaudeLine', () => {
     });
     const events = parseOne(line);
     expect((events[0] as Extract<AdapterEvent, { type: 'tool-result' }>).summary).toBe('visible text');
+  });
+});
+
+describe('ClaudeAdapter conclusion mode', () => {
+  const ECHO_ARGS_SH = join(HERE, '__fixtures__/echo-args.sh');
+
+  type Done = Extract<AdapterEvent, { type: 'done' }>;
+
+  it('structured-output fixture yields done.conclusion from structured_output', () => {
+    const done = eventsFromFixture('structured-output.jsonl').find((e) => e.type === 'done') as Done;
+    expect(done.conclusion).toMatch(/3 个文件/);
+    expect(done.isError).toBeUndefined();
+  });
+
+  it('simple-text fixture has no conclusion key', () => {
+    const done = eventsFromFixture('simple-text.jsonl').find((e) => e.type === 'done') as Done;
+    expect('conclusion' in done).toBe(false);
+    expect('isError' in done).toBe(false);
+  });
+
+  it('result line with is_error true sets done.isError', () => {
+    const line = JSON.stringify({ type: 'result', is_error: true, result: 'boom', session_id: 's' });
+    const done = [...parseClaudeLine(line)][0] as Done;
+    expect(done.isError).toBe(true);
+    expect(done.finalText).toBe('boom');
+  });
+
+  it('falls back to errors[] for finalText when an is_error result has no result field', () => {
+    const line = JSON.stringify({
+      type: 'result',
+      subtype: 'error_during_execution',
+      is_error: true,
+      session_id: '00000000-0000-0000-0000-000000000000',
+      errors: ['No conversation found with session ID: 00000000-0000-0000-0000-000000000000'],
+    });
+    const done = [...parseClaudeLine(line)][0] as Done;
+    expect(done.isError).toBe(true);
+    expect(done.finalText).toBe('No conversation found with session ID: 00000000-0000-0000-0000-000000000000');
+  });
+
+  it('ignores blank structured_output.conclusion', () => {
+    const line = JSON.stringify({ type: 'result', result: '', session_id: 's', structured_output: { conclusion: '  ' } });
+    expect('conclusion' in ([...parseClaudeLine(line)][0] as Done)).toBe(false);
+  });
+
+  async function runArgs(conclusion: boolean | undefined): Promise<string[]> {
+    const tmp = mkdtempSync(join(tmpdir(), 'claude-test-'));
+    const outFile = join(tmp, 'args.txt');
+    try {
+      const ctx: RunContext = {
+        prompt: 'hi',
+        cwd: tmp,
+        signal: new AbortController().signal,
+        idleTimeoutMs: 5000,
+        env: { ECHO_ARGS_OUT: outFile },
+        ...(conclusion !== undefined ? { conclusion } : {}),
+      };
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _ of new ClaudeAdapter({ cliPath: ECHO_ARGS_SH }).run(ctx)) {
+        /* drain */
+      }
+      return readFileSync(outFile, 'utf8').split('\0').slice(0, -1);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+
+  it('passes --json-schema only when ctx.conclusion is true', async () => {
+    const on = await runArgs(true);
+    const i = on.indexOf('--json-schema');
+    expect(i).toBeGreaterThan(-1);
+    expect(JSON.parse(on[i + 1]!)).toMatchObject({ required: ['conclusion'] });
+    expect(await runArgs(false)).not.toContain('--json-schema');
+    expect(await runArgs(undefined)).not.toContain('--json-schema');
   });
 });

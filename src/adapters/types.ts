@@ -22,6 +22,8 @@ export interface RunContext {
   signal: AbortSignal;
   env?: Record<string, string>;
   idleTimeoutMs: number;
+  /** Ask the CLI for a dedicated final conclusion (see conclusion.ts). */
+  conclusion?: boolean;
 }
 
 export type AdapterEvent =
@@ -31,7 +33,14 @@ export type AdapterEvent =
   | { type: 'tool-result'; callId: string; name: string; ok: boolean; summary?: string }
   | { type: 'thinking'; text?: string }
   | { type: 'error'; message: string; recoverable: boolean }
-  | { type: 'done'; finalText: string; sessionId: string; usage?: TokenUsage };
+  | {
+      type: 'done';
+      finalText: string;
+      sessionId: string;
+      usage?: TokenUsage;
+      conclusion?: string;
+      isError?: boolean;
+    };
 
 export interface AdapterPreflight {
   ok: boolean;

@@ -167,6 +167,40 @@ describe('SessionStore', () => {
     });
   });
 
+  describe('outputMode', () => {
+    const slot = { backend: 'claude' as const, bot: 'claude-bot', cwd: '/a', sessionId: 'sid-1' };
+
+    it('setOutputMode(final) persists across a reload', async () => {
+      await store.upsert('oc_m', slot);
+      await store.setOutputMode('oc_m', 'claude-bot', 'final');
+      const reloaded = new SessionStore(join(dir, 'sessions.json'));
+      await reloaded.load();
+      expect(reloaded.get('oc_m', 'claude-bot')?.outputMode).toBe('final');
+    });
+
+    it('survives reset, setCwd(reset) and an upsert without the field', async () => {
+      await store.upsert('oc_m', slot);
+      await store.setOutputMode('oc_m', 'claude-bot', 'final');
+      await store.reset('oc_m', 'claude-bot');
+      await store.setCwd('oc_m', 'claude-bot', '/b', true);
+      await store.upsert('oc_m', { backend: 'claude', bot: 'claude-bot', cwd: '/b' });
+      expect(store.get('oc_m', 'claude-bot')?.outputMode).toBe('final');
+    });
+
+    it('setOutputMode(stream) leaves no outputMode key', async () => {
+      await store.upsert('oc_m', slot);
+      await store.setOutputMode('oc_m', 'claude-bot', 'final');
+      await store.setOutputMode('oc_m', 'claude-bot', 'stream');
+      expect(store.get('oc_m', 'claude-bot')).not.toHaveProperty('outputMode');
+    });
+
+    it('throws when the slot is not initialized', async () => {
+      await expect(store.setOutputMode('oc_missing', 'claude-bot', 'final')).rejects.toThrow(
+        /not initialized/i,
+      );
+    });
+  });
+
   describe('list()', () => {
     it('returns one entry per (chatId, botName) pair', async () => {
       await store.upsert('oc_a', { backend: 'claude', bot: 'claude-bot', cwd: '/x' });

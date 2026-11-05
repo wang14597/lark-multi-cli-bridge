@@ -15,6 +15,11 @@ export interface ChatSession {
    * a per-session-id setting). Unset = use the bot default.
    */
   idleTimeoutMs?: number;
+  /**
+   * Per-chat output mode set by /mode. 'final' hides the run process and sends
+   * only the conclusion. Absent = 'stream'. Chat preference: survives /new, /cd.
+   */
+  outputMode?: 'stream' | 'final';
 }
 
 /**
