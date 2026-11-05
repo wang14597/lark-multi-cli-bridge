@@ -64,7 +64,7 @@ lmcb 通过一个 **PATH shim** 来锁定身份：
 | `worker/` | 单 bot 生命周期：Lark 事件 → dispatcher → adapter → 流式卡片。每次运行的 prompt 前缀（异步 `prefixPrompt`）为 `<bridge_context>`，群里设了分工时再加 `<team_roster>`（`team-roster.ts`；队友行带 `<at>` 标签，由各 worker 调群成员接口解析，缓存 10 分钟） |
 | `lark/` | Lark SDK 封装：WebSocket、消息解析、`card-builder.ts`、`markdown-normalize.ts`、`run-state.ts`、`tool-render.ts`、附件下载 |
 | `adapters/` | `ClaudeAdapter` / `CodexAdapter` / `GeminiAdapter`，实现 `AsyncIterable<AdapterEvent>` |
-| `commands/` | 斜杠命令路由 + handler（13 条命令，含管理员专用的 `/team`（群团队分工）和按会话的 `/mode stream|final`） |
+| `commands/` | 斜杠命令路由 + handler（13 条命令，含管理员专用的 `/team`（群团队分工）和按会话的 `/mode stream\|final`） |
 | `session/` | `SessionStore`（每 bot 一个文件、单写者、内存缓存）+ `WorkspaceStore`（全 bot 共享一个文件、读时透传——不缓存，写为读-改-写）+ `TeamStore`（按群记录的团队分工，同样是共享的读时透传设计）。均原子写盘。 |
 | `auth/` | 访问控制规则；`register-app.ts` 实现扫码创建应用 |
 | `daemon/` | macOS launchd plist 生成 |

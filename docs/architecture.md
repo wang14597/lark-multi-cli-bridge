@@ -68,7 +68,7 @@ the env vars are recognised but never mint a usable bot token.
 | `worker/` | Single-bot lifecycle: Lark events → dispatcher → adapter → streaming card. Each run's prompt is prefixed (async `prefixPrompt`) with `<bridge_context>` and, when the group has a roster, `<team_roster>` (`team-roster.ts`; teammate lines carry an `<at>` mention tag resolved per worker via the chat-members API, cached 10 min) |
 | `lark/` | Lark SDK wrapper: WebSocket, message parsing, `card-builder.ts`, `markdown-normalize.ts`, `run-state.ts`, `tool-render.ts`, attachment download |
 | `adapters/` | `ClaudeAdapter` / `CodexAdapter` / `GeminiAdapter` implementing `AsyncIterable<AdapterEvent>` |
-| `commands/` | Slash-command router and handlers (13 commands, incl. admin-only `/team` for the group roster and per-chat `/mode stream|final`) |
+| `commands/` | Slash-command router and handlers (13 commands, incl. admin-only `/team` for the group roster and per-chat `/mode stream\|final`) |
 | `session/` | `SessionStore` (one file per bot, single writer, cached in memory) + `WorkspaceStore` (one file shared by all bots, read-through — no cache, mutations are read-modify-write) + `TeamStore` (per-group roster, same shared read-through design). All use atomic writes. |
 | `auth/` | Access control rules; `register-app.ts` for scan-to-create QR provisioning |
 | `daemon/` | macOS launchd plist generation |
