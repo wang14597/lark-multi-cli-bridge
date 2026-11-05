@@ -166,6 +166,19 @@ describe('ClaudeAdapter conclusion mode', () => {
     expect(done.finalText).toBe('boom');
   });
 
+  it('falls back to errors[] for finalText when an is_error result has no result field', () => {
+    const line = JSON.stringify({
+      type: 'result',
+      subtype: 'error_during_execution',
+      is_error: true,
+      session_id: '00000000-0000-0000-0000-000000000000',
+      errors: ['No conversation found with session ID: 00000000-0000-0000-0000-000000000000'],
+    });
+    const done = [...parseClaudeLine(line)][0] as Done;
+    expect(done.isError).toBe(true);
+    expect(done.finalText).toBe('No conversation found with session ID: 00000000-0000-0000-0000-000000000000');
+  });
+
   it('ignores blank structured_output.conclusion', () => {
     const line = JSON.stringify({ type: 'result', result: '', session_id: 's', structured_output: { conclusion: '  ' } });
     expect('conclusion' in ([...parseClaudeLine(line)][0] as Done)).toBe(false);
