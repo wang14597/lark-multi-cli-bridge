@@ -2,8 +2,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   CONCLUSION_SCHEMA,
-  CONCLUSION_GUIDANCE,
-  CONCLUSION_PROMPT_HINT,
   parseConclusionJson,
   looksLikeJson,
 } from '../../src/adapters/conclusion.js';
@@ -34,10 +32,7 @@ describe('CONCLUSION_SCHEMA', () => {
     expect(CONCLUSION_SCHEMA.required).toEqual(['conclusion']);
     expect(CONCLUSION_SCHEMA).toMatchObject({
       type: 'object',
-      properties: { conclusion: { type: 'string', description: CONCLUSION_GUIDANCE } },
+      properties: { conclusion: { type: 'string' } },
     });
-  });
-  it('hint embeds the guidance', () => {
-    expect(CONCLUSION_PROMPT_HINT).toContain(CONCLUSION_GUIDANCE);
   });
 });

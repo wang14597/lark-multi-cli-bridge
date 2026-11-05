@@ -29,7 +29,7 @@ slug: final-mode-text-reply
   `ConclusionStreamer` 改为接收 `ReplySink`（不再用 `CardSink`）；`card-builder.ts` 的
   `stopButton` 恢复为私有；worker 在 final 模式构造 `LarkReplySink`，stream 模式构造 `LarkCardSink`。
 
-- **不再限制结论的长度和形式（用户决定）。** `CONCLUSION_GUIDANCE`（`src/adapters/conclusion.ts`）原来把结论限制在 1–5 句话；试用中让 bot 按点列出时，它把 24 条压成了一段话。用户不希望有任何长度或形式要求，现在只保留：结论就是模型平时会给出的完整回答，保留 Markdown 排版（标题、列表、换行），能独立阅读。
+- **结论不再附加任何提示词（用户决定）。** 原来结论带有写作要求（JSON schema 字段的说明文字，最初限制 1–5 句话——试用中让 bot 按点列出时，24 条被压成了一段话），Gemini 还会在 prompt 末尾追加一句提示。用户不希望有任何额外提示词：`CONCLUSION_SCHEMA` 现在只是一个不带说明的 `{conclusion: string}`，`CONCLUSION_GUIDANCE` / `CONCLUSION_PROMPT_HINT` 已删除，Gemini 的 prompt 不再改动（结论仍取最后一次工具调用之后的文字）。已用 claude 2.1.283 实测：不带说明的 schema 仍会给出完整回答，Markdown 列表和换行都保留。
 
 ## 涉及文件
 

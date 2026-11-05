@@ -35,7 +35,7 @@ Lark push notification (only new messages do); a new reply message brings the ph
   `card-builder.ts` `stopButton` is private again; the worker builds a
   `LarkReplySink` for final mode and a `LarkCardSink` for stream mode.
 
-- **No length or form limit on the conclusion (user decision).** `CONCLUSION_GUIDANCE` (`src/adapters/conclusion.ts`) used to cap the conclusion at 1–5 sentences; in trial, asked to list points, the bot squeezed 24 items into one paragraph. The user does not want any length/form requirement, so the guidance now only says: the full final reply the model would normally give, keeping its Markdown layout (headings, lists, line breaks), readable on its own.
+- **No prompt text for the conclusion (user decision).** The conclusion used to come with written guidance (a JSON-schema field description, first capped at 1–5 sentences — in trial a requested list of 24 items got squeezed into one paragraph) and Gemini got a closing hint appended to its prompt. The user wants no extra prompt at all: `CONCLUSION_SCHEMA` is now a bare `{conclusion: string}` with no description, `CONCLUSION_GUIDANCE` / `CONCLUSION_PROMPT_HINT` are removed, and Gemini's prompt is untouched (its conclusion is still the text after its last tool call). Verified live with claude 2.1.283: the bare schema still yields the full answer with its Markdown list and line breaks.
 
 ## Files touched
 
