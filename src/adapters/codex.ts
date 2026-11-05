@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MIT
+import { writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { spawnWithLifecycle } from './base.js';
+import { CONCLUSION_SCHEMA, looksLikeJson, parseConclusionJson } from './conclusion.js';
 import type { Adapter, AdapterEvent, AdapterPreflight, RunContext } from './types.js';
 
 interface CodexJsonLine {
@@ -12,7 +16,27 @@ interface CodexJsonLine {
   usage?: { input_tokens?: number; output_tokens?: number };
   // 0.130.0+ fields
   thread_id?: string;
-  item?: { id?: string; type?: string; text?: string; name?: string };
+  item?: {
+    id?: string;
+    type?: string;
+    text?: string;
+    // command_execution (verified on 0.162.1)
+    command?: string;
+    aggregated_output?: string;
+    exit_code?: number | null;
+    status?: string;
+  };
+}
+
+// Written once per process; codex reads it on every conclusion-mode run.
+let conclusionSchemaFile: string | undefined;
+function getConclusionSchemaFile(): string {
+  if (!conclusionSchemaFile) {
+    const f = join(tmpdir(), 'lmcb-conclusion-schema.json');
+    writeFileSync(f, JSON.stringify(CONCLUSION_SCHEMA));
+    conclusionSchemaFile = f;
+  }
+  return conclusionSchemaFile;
 }
 
 // Shared across calls so parseCodexJsonLine can attach the most recent
@@ -37,9 +61,24 @@ export function* parseCodexJsonLine(line: string): Iterable<AdapterEvent> {
   if (obj.type === 'turn.started') {
     return;
   }
+  if (obj.type === 'item.started' && obj.item?.type === 'command_execution' && obj.item.id) {
+    yield { type: 'tool-call', callId: obj.item.id, name: 'Bash', input: obj.item };
+    return;
+  }
   if (obj.type === 'item.completed' && obj.item) {
-    if (obj.item.type === 'agent_message' && typeof obj.item.text === 'string') {
-      yield { type: 'text-delta', text: obj.item.text };
+    const item = obj.item;
+    if (item.type === 'agent_message' && typeof item.text === 'string') {
+      yield { type: 'text-delta', text: item.text };
+    } else if (item.type === 'reasoning' && typeof item.text === 'string') {
+      yield { type: 'thinking', text: item.text };
+    } else if (item.type === 'command_execution' && item.id) {
+      yield {
+        type: 'tool-result',
+        callId: item.id,
+        name: 'Bash',
+        ok: item.exit_code === 0 && item.status !== 'failed',
+        ...(typeof item.aggregated_output === 'string' ? { summary: item.aggregated_output } : {}),
+      };
     }
     return;
   }
@@ -175,6 +214,7 @@ export class CodexAdapter implements Adapter {
     if (!extraArgs.some((a) => a.startsWith('allow_login_shell=')))
       baseArgs.push('-c', 'allow_login_shell=false');
     baseArgs.push(...extraArgs);
+    if (ctx.conclusion) baseArgs.push('--output-schema', getConclusionSchemaFile());
     // resume subcommand takes SESSION_ID as a positional arg before PROMPT.
     if (ctx.sessionId) baseArgs.push(ctx.sessionId);
 
@@ -188,6 +228,9 @@ export class CodexAdapter implements Adapter {
     let finalText = '';
     let sessionId = ctx.sessionId ?? '';
     let doneEmitted = false;
+    // Each agent_message is a whole message; the parser is stateless, so
+    // paragraph breaks between back-to-back messages are added here.
+    let prevWasText = false;
 
     try {
       for await (const line of spawnWithLifecycle(this.opts.cliPath ?? 'codex', baseArgs, {
@@ -199,18 +242,35 @@ export class CodexAdapter implements Adapter {
         if (jsonMode) {
           for (const ev of parseCodexJsonLine(line)) {
             if (ev.type === 'session-start') sessionId = ev.sessionId;
-            if (ev.type === 'text-delta') finalText += ev.text;
             if (ev.type === 'done') {
               doneEmitted = true;
-              // Patch in the running sessionId and accumulated finalText
-              // since the parser doesn't see them at line-parse time.
+              prevWasText = false;
+              const text = ev.finalText || finalText;
+              // --output-schema makes the last message the JSON object; a
+              // resumed run may still answer in prose. Truncated JSON → none.
+              const conclusion = ctx.conclusion
+                ? (parseConclusionJson(text) ??
+                  (looksLikeJson(text) ? undefined : text.trim() || undefined))
+                : undefined;
+              // Patch in the running sessionId and last message since the
+              // parser doesn't see them at line-parse time.
               yield {
                 ...ev,
                 sessionId: ev.sessionId || sessionId,
-                finalText: ev.finalText || finalText,
+                finalText: text,
+                ...(conclusion ? { conclusion } : {}),
               };
               continue;
             }
+            if (ev.type === 'text-delta') {
+              // run() needs codex >=0.130 (`exec resume`), where every
+              // text-delta is a whole agent_message.
+              finalText = ev.text;
+              yield prevWasText ? { type: 'text-delta', text: `\n\n${ev.text}` } : ev;
+              prevWasText = true;
+              continue;
+            }
+            prevWasText = false;
             yield ev;
           }
         } else {

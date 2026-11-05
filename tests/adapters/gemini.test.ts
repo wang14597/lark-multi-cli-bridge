@@ -10,6 +10,7 @@ import {
   chunkToEvents,
   parseGeminiJsonLine,
 } from '../../src/adapters/gemini.js';
+import { CONCLUSION_PROMPT_HINT } from '../../src/adapters/conclusion.js';
 import type { AdapterEvent, RunContext } from '../../src/adapters/types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -269,5 +270,56 @@ describe('GeminiAdapter argv shape', () => {
     const args = await runAndCaptureArgs(adapter, 'P');
     expect(args.some((a) => a.startsWith('--prompt-interactive'))).toBe(false);
     expect(args).not.toContain('-i');
+  });
+});
+
+describe('GeminiAdapter conclusion mode', () => {
+  const ECHO_ARGS_SH = join(HERE, '__fixtures__/echo-args.sh');
+  const CAT_SH = join(HERE, '__fixtures__/cat-fixture.sh');
+
+  async function run(
+    cliPath: string,
+    extra: Partial<RunContext>,
+  ): Promise<{ events: AdapterEvent[]; args: string[] }> {
+    const tmp = mkdtempSync(join(tmpdir(), 'gemini-test-'));
+    const outFile = join(tmp, 'args.txt');
+    try {
+      const ctx: RunContext = {
+        prompt: 'USER-PROMPT',
+        cwd: tmp,
+        signal: new AbortController().signal,
+        idleTimeoutMs: 5000,
+        env: {
+          ECHO_ARGS_OUT: outFile,
+          FIXTURE_FILE: join(HERE, '__fixtures__/gemini/stream-json-tools.jsonl'),
+        },
+        ...extra,
+      };
+      const events: AdapterEvent[] = [];
+      for await (const ev of new GeminiAdapter({ cliPath }).run(ctx)) events.push(ev);
+      return { events, args: readFileSync(outFile, 'utf8').split('\0').slice(0, -1) };
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+
+  const promptArg = (args: string[]) => args[args.indexOf('--prompt') + 1];
+
+  it('appends the conclusion hint to the prompt only when conclusion is on', async () => {
+    expect(promptArg((await run(ECHO_ARGS_SH, { conclusion: true })).args)).toBe(
+      `USER-PROMPT${CONCLUSION_PROMPT_HINT}`,
+    );
+    expect(promptArg((await run(ECHO_ARGS_SH, {})).args)).toBe('USER-PROMPT');
+  });
+
+  it('sets done.conclusion to the text after the last tool call', async () => {
+    const { events } = await run(CAT_SH, { conclusion: true });
+    const done = events[events.length - 1];
+    expect(done).toMatchObject({ type: 'done', conclusion: 'BLUE_FOX 不是已知的项目名' });
+  });
+
+  it('leaves conclusion unset when conclusion mode is off', async () => {
+    const { events } = await run(CAT_SH, {});
+    expect(events[events.length - 1]).not.toHaveProperty('conclusion');
   });
 });
