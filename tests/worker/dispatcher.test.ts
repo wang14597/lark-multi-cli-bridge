@@ -69,3 +69,68 @@ describe('Dispatcher (MVP — no preempt)', () => {
     expect(streamer.onToolResult).toHaveBeenCalledWith('tu_s', true, 'Launching skill: foo');
   });
 });
+
+describe('Dispatcher output mode', () => {
+  class CtxAdapter extends MockAdapter {
+    ctxs: RunContext[] = [];
+    override async *run(ctx: RunContext) {
+      this.ctxs.push(ctx);
+      yield* super.run(ctx);
+    }
+  }
+  const req = (prompt: string) => ({ chatId: 'oc_m', prompt, cwd: '/tmp', idleTimeoutMs: 60_000 });
+
+  it('final mode: sets ctx.conclusion and passes mode to makeStreamer', async () => {
+    const adapter = new CtxAdapter([{ type: 'done', sessionId: 's', finalText: 'x' }]);
+    const makeStreamer = vi.fn((_c: string, _r?: string, _m?: 'stream' | 'final') => fakeStreamer());
+    const d = new Dispatcher({
+      adapter,
+      makeStreamer,
+      onSessionUpdate: () => {},
+      resolveOutputMode: () => 'final',
+    });
+    await d.enqueue(req('a'));
+    await new Promise((r) => setTimeout(r, 600));
+    expect(adapter.ctxs[0]!.conclusion).toBe(true);
+    expect(makeStreamer).toHaveBeenCalledWith('oc_m', undefined, 'final');
+  });
+
+  it('default mode: no conclusion in ctx', async () => {
+    const adapter = new CtxAdapter([{ type: 'done', sessionId: 's', finalText: 'x' }]);
+    const makeStreamer = vi.fn((_c: string, _r?: string, _m?: 'stream' | 'final') => fakeStreamer());
+    const d = new Dispatcher({ adapter, makeStreamer, onSessionUpdate: () => {} });
+    await d.enqueue(req('a'));
+    await new Promise((r) => setTimeout(r, 600));
+    expect(adapter.ctxs[0]!.conclusion).toBeUndefined();
+    expect(makeStreamer.mock.calls[0]![2]).not.toBe('final');
+  });
+
+  it('forwards done conclusion/isError to onDone', async () => {
+    const adapter = new CtxAdapter([
+      { type: 'done', sessionId: 's', finalText: 'x', conclusion: 'c', isError: true },
+    ]);
+    const streamer = fakeStreamer();
+    const d = new Dispatcher({ adapter, makeStreamer: () => streamer, onSessionUpdate: () => {} });
+    await d.enqueue(req('a'));
+    await new Promise((r) => setTimeout(r, 600));
+    expect(streamer.onDone).toHaveBeenCalledWith(
+      expect.objectContaining({ conclusion: 'c', isError: true }),
+    );
+  });
+
+  it('resolveOutputMode applies to every request on the lane', async () => {
+    const adapter = new CtxAdapter([{ type: 'done', sessionId: 's', finalText: 'x' }]);
+    const d = new Dispatcher({
+      adapter,
+      makeStreamer: () => fakeStreamer(),
+      onSessionUpdate: () => {},
+      batchWindowMs: 10,
+      resolveOutputMode: () => 'final',
+    });
+    await d.enqueue(req('a'));
+    await new Promise((r) => setTimeout(r, 100));
+    await d.enqueue(req('b'));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(adapter.ctxs.map((c) => c.conclusion)).toEqual([true, true]);
+  });
+});

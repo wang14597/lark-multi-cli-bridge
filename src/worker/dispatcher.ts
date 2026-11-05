@@ -20,6 +20,7 @@ export interface DispatcherOpts {
   makeStreamer: (
     chatId: string,
     replyTo?: string,
+    mode?: 'stream' | 'final',
   ) => Pick<
     CardStreamer,
     'start' | 'onTextDelta' | 'onToolCall' | 'onToolResult' | 'onError' | 'onDone' | 'onInterrupted'
@@ -27,6 +28,9 @@ export interface DispatcherOpts {
   onSessionUpdate: (chatId: string, sessionId: string) => void;
   batchWindowMs?: number;
   resolveIdleTimeoutMs?: (chatId: string) => number | undefined;
+  // Per-chat output mode (set by /mode). Resolved per run, not at enqueue, so
+  // synthesized requests (card-button callbacks) honour it too.
+  resolveOutputMode?: (chatId: string) => 'stream' | 'final' | undefined;
   prefixPrompt?: (chatId: string, prompt: string) => string | Promise<string>;
   // Env merged into every adapter.run() invocation. Per-request env wins on
   // key collision. Use for static per-worker identity injection — today this
@@ -128,7 +132,8 @@ export class Dispatcher {
   }
 
   private async dispatchOne(req: DispatchRequest, signal: AbortSignal): Promise<void> {
-    const streamer = this.opts.makeStreamer(req.chatId, req.replyToMessageId);
+    const mode = this.opts.resolveOutputMode?.(req.chatId);
+    const streamer = this.opts.makeStreamer(req.chatId, req.replyToMessageId, mode);
     await streamer.start();
     const startedAt = Date.now();
     const overrideIdle = this.opts.resolveIdleTimeoutMs?.(req.chatId);
@@ -146,6 +151,7 @@ export class Dispatcher {
         ...(req.sessionId !== undefined ? { sessionId: req.sessionId } : {}),
         signal,
         idleTimeoutMs: idleMs,
+        ...(mode === 'final' ? { conclusion: true } : {}),
         ...(mergedEnv !== undefined ? { env: mergedEnv } : {}),
       })) {
         switch (ev.type) {
@@ -174,6 +180,8 @@ export class Dispatcher {
               finalText: ev.finalText,
               durationMs: Date.now() - startedAt,
               ...(ev.usage !== undefined ? { usage: ev.usage } : {}),
+              ...(ev.conclusion !== undefined ? { conclusion: ev.conclusion } : {}),
+              ...(ev.isError !== undefined ? { isError: ev.isError } : {}),
             });
             break;
         }
