@@ -8,6 +8,7 @@ interface FakeIm {
     create: ReturnType<typeof vi.fn>;
     reply: ReturnType<typeof vi.fn>;
     patch: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -22,6 +23,7 @@ function makeClient(overrides?: Partial<FakeIm['message']>): {
       reply:
         overrides?.reply ?? vi.fn().mockResolvedValue({ data: { message_id: 'msg_new_reply' } }),
       patch: overrides?.patch ?? vi.fn().mockResolvedValue({}),
+      delete: overrides?.delete ?? vi.fn().mockResolvedValue({}),
     },
   };
   return { client: { im } as unknown as Lark.Client, im };
@@ -68,6 +70,12 @@ describe('LarkCardSink', () => {
     const arg = im.message.patch.mock.calls[0]![0];
     expect(arg.path.message_id).toBe('msg_card_1');
     expect(JSON.parse(arg.data.content)).toEqual({ foo: 'bar' });
+  });
+
+  it('recall deletes the message by id', async () => {
+    const { client, im } = makeClient();
+    await new LarkCardSink(client, 'oc_chat_1').recall('msg_status_1');
+    expect(im.message.delete).toHaveBeenCalledWith({ path: { message_id: 'msg_status_1' } });
   });
 
   it('throws when create response carries no message_id', async () => {
