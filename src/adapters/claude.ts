@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { spawnWithLifecycle } from './base.js';
+import { CONCLUSION_SCHEMA } from './conclusion.js';
 import type { Adapter, AdapterEvent, AdapterPreflight, RunContext } from './types.js';
 
 interface ClaudeStreamLine {
@@ -17,6 +18,7 @@ interface ClaudeStreamLine {
   };
   result?: string;
   is_error?: boolean;
+  structured_output?: { conclusion?: unknown };
   usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number };
 }
 
@@ -99,10 +101,14 @@ export function* parseClaudeLine(line: string): Iterable<AdapterEvent> {
   }
 
   if (obj.type === 'result' && obj.session_id) {
+    const c = obj.structured_output?.conclusion;
+    const conclusion = typeof c === 'string' ? c.trim() : '';
     yield {
       type: 'done',
       sessionId: obj.session_id,
       finalText: obj.result ?? '',
+      ...(conclusion ? { conclusion } : {}),
+      ...(obj.is_error === true ? { isError: true } : {}),
       ...(obj.usage
         ? {
             usage: {
@@ -159,6 +165,7 @@ export class ClaudeAdapter implements Adapter {
     if (this.opts.appendSystemPrompt) {
       args.push('--append-system-prompt', this.opts.appendSystemPrompt);
     }
+    if (ctx.conclusion) args.push('--json-schema', JSON.stringify(CONCLUSION_SCHEMA));
     args.push(...(this.opts.extraArgs ?? []));
 
     try {
