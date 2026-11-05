@@ -2,7 +2,7 @@
 
 中文版: [architecture.zh.md](architecture.zh.md)
 
-See the canonical design document under `docs/superpowers/specs/` for the full specification. This is a working summary updated through v0.8.0 plus the unreleased codex lark-cli profile-pin fix. Granular per-change history lives in [docs/changes/](changes/INDEX.md).
+See the canonical design document under `docs/superpowers/specs/` for the full specification. This is a working summary updated through v0.8.0 plus the unreleased codex lark-cli profile-pin fix and conclusion mode (`/mode final`). Granular per-change history lives in [docs/changes/](changes/INDEX.md).
 
 ## Process topology
 
@@ -68,7 +68,7 @@ the env vars are recognised but never mint a usable bot token.
 | `worker/` | Single-bot lifecycle: Lark events → dispatcher → adapter → streaming card. Each run's prompt is prefixed (async `prefixPrompt`) with `<bridge_context>` and, when the group has a roster, `<team_roster>` (`team-roster.ts`; teammate lines carry an `<at>` mention tag resolved per worker via the chat-members API, cached 10 min) |
 | `lark/` | Lark SDK wrapper: WebSocket, message parsing, `card-builder.ts`, `markdown-normalize.ts`, `run-state.ts`, `tool-render.ts`, attachment download |
 | `adapters/` | `ClaudeAdapter` / `CodexAdapter` / `GeminiAdapter` implementing `AsyncIterable<AdapterEvent>` |
-| `commands/` | Slash-command router and handlers (12 commands, incl. admin-only `/team` for the group roster) |
+| `commands/` | Slash-command router and handlers (13 commands, incl. admin-only `/team` for the group roster and per-chat `/mode stream|final`) |
 | `session/` | `SessionStore` (one file per bot, single writer, cached in memory) + `WorkspaceStore` (one file shared by all bots, read-through — no cache, mutations are read-modify-write) + `TeamStore` (per-group roster, same shared read-through design). All use atomic writes. |
 | `auth/` | Access control rules; `register-app.ts` for scan-to-create QR provisioning |
 | `daemon/` | macOS launchd plist generation |
@@ -118,9 +118,9 @@ All adapters expose `AsyncIterable<AdapterEvent>` over `run(ctx)`. The discrimin
 | `tool-result` | Tool returned a result |
 | `thinking` | CLI is reasoning (Claude-specific; triggers collapsible reasoning panel) |
 | `error` | Recoverable or fatal error from the CLI |
-| `done` | CLI finished; final text + token usage |
+| `done` | CLI finished; final text + token usage, plus optional `conclusion` (the short final answer, only when `RunContext.conclusion` was set) and `isError` |
 
-The worker's `Dispatcher` aggregates events into a `CardStreamer`, which throttles Lark card patches to 500 ms or 50 chars (whichever fires first).
+The worker's `Dispatcher` aggregates events into a `CardStreamer`, which throttles Lark card patches to 500 ms or 50 chars (whichever fires first). Each run picks one of two streamers via `resolveOutputMode` (the chat's `ChatSession.outputMode`, default `stream`): `CardStreamer` (live card, as above) or `ConclusionStreamer` (`/mode final`: a "处理中…" status card with a stop button; on `done` it sends a **new** message with the conclusion — a push notification, `@` sender in groups — then recalls the status card via `LarkCardSink.recall` / `im.message.delete`; errors render `⚠️ 没办成：…`, user stop patches the card to "已停止"). When `RunContext.conclusion` is set the adapter asks the CLI for a conclusion: Claude `--json-schema` → `structured_output.conclusion`; Codex `--output-schema <tmp file>` → last `agent_message` JSON; Gemini a prompt hint → text after the last tool call (best effort). Codex `command_execution` items map to `tool-call`/`tool-result`, `reasoning` to `thinking`.
 
 ## Streaming card state machine
 
@@ -172,7 +172,7 @@ Tool detail (full input + output) is intentionally not surfaced in the card — 
 ~/.lark-multi-cli-bridge/
 ├── config.yaml                         (global config)
 ├── bots/<name>.yaml                    (per-bot config, chmod 600)
-├── state/sessions/<bot>.json           (one file PER BOT — single writer, so sibling workers can't clobber each other; atomic writes; per (chatId,botName): backend/cwd/sessionId/messageCount + optional idleTimeoutMs /timeout override. Legacy single state/sessions.json is migrated per-bot on first load.)
+├── state/sessions/<bot>.json           (one file PER BOT — single writer, so sibling workers can't clobber each other; atomic writes; per (chatId,botName): backend/cwd/sessionId/messageCount + optional idleTimeoutMs /timeout override + optional `outputMode` (`stream`|`final`, set by `/mode`; survives `/new` and `/cd`). Legacy single state/sessions.json is migrated per-bot on first load.)
 ├── state/workspaces.json               (named workspace aliases — ONE file shared by every worker, because `/ws save` in one bot must resolve from another. Many writers, so the store is read-through: every read hits disk and every save/remove is a read-modify-write of one key.)
 ├── state/teams.json                    (per-group team roster: chatId → bot name → role, set by `/team`. Shared by every worker like workspaces.json, so read-through with per-chat-key read-modify-write. Injected into each run's prompt as `<team_roster>`.)
 ├── state/processes.json
