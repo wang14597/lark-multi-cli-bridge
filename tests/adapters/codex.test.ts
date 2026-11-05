@@ -426,6 +426,34 @@ describe('CodexAdapter run() over recorded item streams', () => {
     }
   });
 
+  it('keeps the paragraph break across an unrendered reasoning item', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'codex-reason-'));
+    try {
+      const f = derivedFixture(tmp, 'json-tools.jsonl', (o) => {
+        if (o.item?.type !== 'command_execution') return o;
+        return o.item.id === 'item_1' && (o as { type?: string }).type === 'item.completed'
+          ? { ...o, item: { id: 'r1', type: 'reasoning', text: 'hmm' } }
+          : undefined;
+      });
+      const { events } = await runFixture(f);
+      expect(events.map((e) => e.type)).toContain('thinking');
+      const deltas = events.flatMap((e) => (e.type === 'text-delta' ? [e.text] : []));
+      expect(deltas[1]!.startsWith('\n\n')).toBe(true);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('re-creates the schema file if it was removed between runs', async () => {
+    const first = await runFixture('json-schema.jsonl', { conclusion: true });
+    const f1 = first.args[first.args.indexOf('--output-schema') + 1]!;
+    expect(f1).toContain(`lmcb-conclusion-schema-${process.pid}`);
+    rmSync(f1, { force: true });
+    const second = await runFixture('json-schema.jsonl', { conclusion: true });
+    const f2 = second.args[second.args.indexOf('--output-schema') + 1]!;
+    expect(JSON.parse(readFileSync(f2, 'utf8'))).toEqual(CONCLUSION_SCHEMA);
+  });
+
   it('extracts the conclusion from --output-schema JSON when conclusion mode is on', async () => {
     const { events, args } = await runFixture('json-schema.jsonl', { conclusion: true });
     expect(lastDone(events).conclusion).toBe('当前目录有 3 个文件（不含子目录 `sub`）。');

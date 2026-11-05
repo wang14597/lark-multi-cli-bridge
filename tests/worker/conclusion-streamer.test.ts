@@ -65,6 +65,14 @@ describe('ConclusionStreamer', () => {
     expect(sink.recall).toHaveBeenCalledTimes(1);
   });
 
+  it('done(isError) with raw JSON finalText shows 未知错误, not the JSON', async () => {
+    const { s, sink } = setup();
+    await s.start();
+    await s.onDone({ finalText: '{"conclusion":', durationMs: 1, isError: true });
+    expect(created(sink, 1)).toContain('⚠️ 没办成：未知错误');
+    expect(created(sink, 1)).not.toContain('conclusion');
+  });
+
   it('error: failure card + recall', async () => {
     const { s, sink } = setup();
     await s.start();

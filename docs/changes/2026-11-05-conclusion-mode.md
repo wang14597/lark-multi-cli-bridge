@@ -29,7 +29,9 @@ every non-`agent_message` item) and glued consecutive agent messages together.
   never shown. The streamer settles on the first terminal event.
 - **Conclusion source** (`RunContext.conclusion` → `done.conclusion`):
   Claude `--json-schema` → `structured_output.conclusion`; Codex
-  `--output-schema <tmp file>` → last `agent_message` JSON; Gemini prompt hint →
+  `--output-schema <tmp file>` → last `agent_message` JSON (the file is
+  `$TMPDIR/lmcb-conclusion-schema-<pid>.json`, per process and re-created before
+  every run if the OS temp cleaner removed it); Gemini prompt hint →
   text after the last tool call. Verified 2026-11-05 on claude 2.1.283 /
   codex-cli 0.162.1 that a later turn resumed without the schema answers
   normally.
@@ -37,6 +39,14 @@ every non-`agent_message` item) and glued consecutive agent messages together.
   `is_error: true`, `subtype: error_during_execution`, the message in `errors[]`
   (no `result`) and exit code 1. The adapter now sets `finalText` from `errors[]`
   and `done.isError`; both a `done{isError}` and an `error` event can occur.
+- **Review hardening:** a final-mode run whose stream ends with neither `done`
+  nor `error` now shows "⚠️ 没办成：运行结束但没有返回结果" instead of a stuck
+  "处理中…" card; conclusion card bodies are capped at 8000 chars; a raw-JSON
+  `finalText` on an `is_error` result shows "未知错误"; Codex messages around an
+  unrendered `reasoning` item stay separated.
+- **Claude stream-mode side effect:** on an `is_error` result with empty
+  `result`, `finalText` now comes from `errors[]`, so the stream card shows the
+  real error text.
 - **Codex fix (stream mode too):** `command_execution` → `tool-call` /
   `tool-result`, `reasoning` → `thinking` (unrendered), messages separated,
   `finalText` = last message. `scripts/record-cli-fixture.sh` now closes stdin
@@ -44,8 +54,6 @@ every non-`agent_message` item) and glued consecutive agent messages together.
 
 ## Known limitations
 
-- The Codex schema file is a fixed `$TMPDIR` path written once per process
-  (flagged for follow-up).
 - The worker's group/p2p mention branch has no unit test.
 - Gemini's conclusion is best-effort (prompt hint only, no schema support).
 
@@ -74,5 +82,5 @@ state (`outputMode`), commands count 12 → 13, version marker.
 
 - Spec: `docs/superpowers/specs/2026-11-05-conclusion-mode-design.md`
 - Plan: `docs/superpowers/plans/2026-11-05-conclusion-mode.md`
-- Commits: `95af287..8b9c1f7` (branch `feat/conclusion-mode`)
+- Commits: `95af287..f2f95f8` plus the review-fix commits `fix: harden conclusion mode per final review` (branch `feat/conclusion-mode`)
 - CHANGELOG: `[Unreleased]` → Added, Fixed

@@ -116,7 +116,7 @@ v0.4.0 在 `src/lark/` 中新增的关键文件：
 | `error` | CLI 产生了可恢复或致命错误 |
 | `done` | CLI 完成；最终文本 + token 用量，另有可选的 `conclusion`（简短最终结论，仅在 `RunContext.conclusion` 置位时出现）和 `isError` |
 
-Worker 的 `Dispatcher` 把事件喂给 `CardStreamer`，后者以 500 ms 或 50 字（先到者触发）节流推送 Lark 卡片补丁。每次运行通过 `resolveOutputMode`（取会话的 `ChatSession.outputMode`，默认 `stream`）二选一：`CardStreamer`（如上，实时卡片）或 `ConclusionStreamer`（`/mode final`：发一张带停止按钮的「处理中…」状态卡；`done` 时**新发**一条结论消息（会推送通知，群里 `@` 发送者），再通过 `LarkCardSink.recall` / `im.message.delete` 撤回状态卡；出错显示 `⚠️ 没办成：…`，用户停止则把卡片改为「已停止」）。置位 `RunContext.conclusion` 时，适配器向 CLI 索取结论：Claude 用 `--json-schema` → `structured_output.conclusion`；Codex 用 `--output-schema <临时文件>` → 最后一条 `agent_message` 的 JSON；Gemini 用 prompt 提示 → 最后一次工具调用之后的文本（尽力而为）。Codex 的 `command_execution` 映射为 `tool-call`/`tool-result`，`reasoning` 映射为 `thinking`。
+Worker 的 `Dispatcher` 把事件喂给 `CardStreamer`，后者以 500 ms 或 50 字（先到者触发）节流推送 Lark 卡片补丁。每次运行通过 `resolveOutputMode`（取会话的 `ChatSession.outputMode`，默认 `stream`）二选一：`CardStreamer`（如上，实时卡片）或 `ConclusionStreamer`（`/mode final`：发一张带停止按钮的「处理中…」状态卡；`done` 时**新发**一条结论消息（会推送通知，群里 `@` 发送者），再通过 `LarkCardSink.recall` / `im.message.delete` 撤回状态卡；出错显示 `⚠️ 没办成：…`，用户停止则把卡片改为「已停止」）。置位 `RunContext.conclusion` 时，适配器向 CLI 索取结论：Claude 用 `--json-schema` → `structured_output.conclusion`；Codex 用 `--output-schema <按进程命名的临时文件 `lmcb-conclusion-schema-<pid>.json`，每次运行前若缺失则重建>` → 最后一条 `agent_message` 的 JSON；Gemini 用 prompt 提示 → 最后一次工具调用之后的文本（尽力而为）。Codex 的 `command_execution` 映射为 `tool-call`/`tool-result`，`reasoning` 映射为 `thinking`。
 
 ## 流式卡片状态机
 

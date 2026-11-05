@@ -118,6 +118,29 @@ describe('Dispatcher output mode', () => {
     );
   });
 
+  it('final mode: stream ending without done/error reports a visible failure', async () => {
+    const adapter = new CtxAdapter([{ type: 'text-delta', text: 'partial' }]);
+    const streamer = fakeStreamer();
+    const d = new Dispatcher({
+      adapter,
+      makeStreamer: () => streamer,
+      onSessionUpdate: () => {},
+      resolveOutputMode: () => 'final',
+    });
+    await d.enqueue(req('a'));
+    await new Promise((r) => setTimeout(r, 600));
+    expect(streamer.onError).toHaveBeenCalledWith('运行结束但没有返回结果');
+  });
+
+  it('stream mode: stream ending without done/error is left alone', async () => {
+    const adapter = new CtxAdapter([{ type: 'text-delta', text: 'partial' }]);
+    const streamer = fakeStreamer();
+    const d = new Dispatcher({ adapter, makeStreamer: () => streamer, onSessionUpdate: () => {} });
+    await d.enqueue(req('a'));
+    await new Promise((r) => setTimeout(r, 600));
+    expect(streamer.onError).not.toHaveBeenCalled();
+  });
+
   it('resolveOutputMode applies to every request on the lane', async () => {
     const adapter = new CtxAdapter([{ type: 'done', sessionId: 's', finalText: 'x' }]);
     const d = new Dispatcher({

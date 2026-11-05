@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-import { writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnWithLifecycle } from './base.js';
@@ -28,15 +28,12 @@ interface CodexJsonLine {
   };
 }
 
-// Written once per process; codex reads it on every conclusion-mode run.
-let conclusionSchemaFile: string | undefined;
+// Per-process path (no cross-worker clobbering); re-created if the OS temp
+// cleaner removed it while this long-lived worker kept running.
 function getConclusionSchemaFile(): string {
-  if (!conclusionSchemaFile) {
-    const f = join(tmpdir(), 'lmcb-conclusion-schema.json');
-    writeFileSync(f, JSON.stringify(CONCLUSION_SCHEMA));
-    conclusionSchemaFile = f;
-  }
-  return conclusionSchemaFile;
+  const f = join(tmpdir(), `lmcb-conclusion-schema-${process.pid}.json`);
+  if (!existsSync(f)) writeFileSync(f, JSON.stringify(CONCLUSION_SCHEMA));
+  return f;
 }
 
 // Shared across calls so parseCodexJsonLine can attach the most recent
@@ -270,7 +267,8 @@ export class CodexAdapter implements Adapter {
               prevWasText = true;
               continue;
             }
-            prevWasText = false;
+            // thinking isn't rendered, so text on both sides still needs a break
+            if (ev.type !== 'thinking') prevWasText = false;
             yield ev;
           }
         } else {

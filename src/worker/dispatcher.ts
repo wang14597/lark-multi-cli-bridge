@@ -144,6 +144,7 @@ export class Dispatcher {
       this.opts.extraEnv || req.env
         ? { ...(this.opts.extraEnv ?? {}), ...(req.env ?? {}) }
         : undefined;
+    let terminal = false;
     try {
       for await (const ev of this.opts.adapter.run({
         prompt,
@@ -168,6 +169,7 @@ export class Dispatcher {
             streamer.onToolResult(ev.callId, ev.ok, ev.summary);
             break;
           case 'error':
+            terminal = true;
             if (signal.aborted && signal.reason instanceof UserStopError) {
               await streamer.onInterrupted('user_stop');
             } else {
@@ -175,6 +177,7 @@ export class Dispatcher {
             }
             break;
           case 'done':
+            terminal = true;
             this.opts.onSessionUpdate(req.chatId, ev.sessionId);
             await streamer.onDone({
               finalText: ev.finalText,
@@ -185,6 +188,11 @@ export class Dispatcher {
             });
             break;
         }
+      }
+      // A stream that ends with no done/error (e.g. claude result without session_id)
+      // must not leave the final-mode status card on "处理中…" forever.
+      if (!terminal && !signal.aborted && mode === 'final') {
+        await streamer.onError('运行结束但没有返回结果');
       }
     } catch (err) {
       if (err instanceof UserStopError) {

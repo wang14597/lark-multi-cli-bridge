@@ -26,19 +26,25 @@ slug: conclusion-mode
   绝不展示原始 JSON。streamer 以第一个终止事件为准。
 - **结论来源**（`RunContext.conclusion` → `done.conclusion`）：Claude `--json-schema`
   → `structured_output.conclusion`；Codex `--output-schema <临时文件>` → 最后一条
-  `agent_message` 的 JSON；Gemini prompt 提示 → 最后一次工具调用之后的文本。2026-11-05
+  `agent_message` 的 JSON（文件为 `$TMPDIR/lmcb-conclusion-schema-<pid>.json`，按进程命名，
+  每次运行前若被系统清理则重建）；Gemini prompt 提示 → 最后一次工具调用之后的文本。2026-11-05
   在 claude 2.1.283 / codex-cli 0.162.1 上验证：之后不带 schema 续接的轮次回答正常。
 - **Claude `is_error` 发现：** 无效的 `--resume` 会返回 `is_error: true`、
   `subtype: error_during_execution` 的 result 行，信息在 `errors[]`（没有 `result`），
   退出码 1。适配器现在用 `errors[]` 设置 `finalText` 并置 `done.isError`；
   `done{isError}` 与 `error` 事件可能同时出现。
+- **评审加固：** final 模式下流结束时既无 `done` 也无 `error`，现在显示
+  「⚠️ 没办成：运行结束但没有返回结果」，不再卡在「处理中…」；结论卡正文上限 8000 字符；
+  `is_error` 结果的 `finalText` 若是原始 JSON 则显示「未知错误」；Codex 在未渲染的
+  `reasoning` 条目前后的消息保持分段。
+- **Claude stream 模式的附带变化：** `is_error` 结果的 `result` 为空时，`finalText`
+  现取自 `errors[]`，stream 卡片因此显示真实错误文本。
 - **Codex 修复（stream 模式同样受益）：** `command_execution` → `tool-call` /
   `tool-result`，`reasoning` → `thinking`（不渲染），消息分段，`finalText` 取最后一条。
   `scripts/record-cli-fixture.sh` 现在关闭 stdin（`codex exec` 会卡着等输入）。
 
 ## 已知限制
 
-- Codex 的 schema 文件是固定的 `$TMPDIR` 路径，每个进程只写一次（已标记待跟进）。
 - worker 中群聊/单聊的 @ 分支没有单元测试。
 - Gemini 的结论为尽力而为（仅 prompt 提示，无 schema 支持）。
 
@@ -66,5 +72,5 @@ worker 渲染路径（两种 streamer）、落盘状态（`outputMode`）、命�
 
 - Spec：`docs/superpowers/specs/2026-11-05-conclusion-mode-design.md`
 - Plan：`docs/superpowers/plans/2026-11-05-conclusion-mode.md`
-- 提交：`95af287..8b9c1f7`（分支 `feat/conclusion-mode`）
+- 提交：`95af287..f2f95f8` 加评审修复提交 `fix: harden conclusion mode per final review`（分支 `feat/conclusion-mode`）
 - CHANGELOG：`[Unreleased]` → 新增、修复

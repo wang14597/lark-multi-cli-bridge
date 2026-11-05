@@ -50,7 +50,10 @@ export class ConclusionStreamer {
     isError?: boolean;
   }): Promise<void> {
     if (!this.settle()) return;
-    if (opts.isError) return this.conclude(`⚠️ 没办成：${opts.finalText || '未知错误'}`);
+    if (opts.isError) {
+      const detail = looksLikeJson(opts.finalText) ? '' : opts.finalText;
+      return this.conclude(`⚠️ 没办成：${detail || '未知错误'}`);
+    }
     const fallback = opts.finalText.trim();
     await this.conclude(opts.conclusion || (fallback && !looksLikeJson(fallback) ? fallback : NO_CONCLUSION));
   }
