@@ -62,15 +62,32 @@ export class ConclusionStreamer {
     return true;
   }
 
+  // Never throws and never leaves the user without a visible result.
   private async conclude(text: string): Promise<void> {
     const { sink, mentionOpenId, log } = this.opts;
-    await sink.create(renderConclusionCard(text, mentionOpenId));
+    const card = renderConclusionCard(text, mentionOpenId);
+    try {
+      await sink.create(card);
+    } catch (err) {
+      log?.warn({ err }, 'sending conclusion message failed; showing it in the status card');
+      await this.tryPatch(renderConclusionCard(text));
+      return;
+    }
     if (!this.statusId) return;
     try {
       await sink.recall(this.statusId);
     } catch (err) {
       log?.warn({ err }, 'recall of status card failed; marking it done');
-      await sink.patch(this.statusId, renderNoteCard('已完成'));
+      await this.tryPatch(renderNoteCard('已完成'));
+    }
+  }
+
+  private async tryPatch(card: object): Promise<void> {
+    if (!this.statusId) return;
+    try {
+      await this.opts.sink.patch(this.statusId, card);
+    } catch (err) {
+      this.opts.log?.warn({ err }, 'patching status card failed');
     }
   }
 }

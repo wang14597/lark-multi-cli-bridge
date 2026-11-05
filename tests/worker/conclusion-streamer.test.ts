@@ -94,6 +94,25 @@ describe('ConclusionStreamer', () => {
     expect(log.warn).toHaveBeenCalled();
   });
 
+  it('conclusion create failure: status card is patched with the conclusion, no throw', async () => {
+    const { s, sink, log } = setup();
+    await s.start();
+    sink.create.mockRejectedValueOnce(new Error('429'));
+    await expect(s.onDone({ finalText: '', durationMs: 1, conclusion: 'the result' })).resolves.toBeUndefined();
+    expect(sink.patch).toHaveBeenCalledWith('status_1', expect.anything());
+    expect(JSON.stringify(sink.patch.mock.calls[0]![1])).toContain('the result');
+    expect(sink.recall).not.toHaveBeenCalled();
+    expect(log.warn).toHaveBeenCalled();
+  });
+
+  it('recall and fallback patch both throwing: onDone still resolves', async () => {
+    const { s, sink } = setup();
+    sink.recall.mockRejectedValueOnce(new Error('r'));
+    sink.patch.mockRejectedValueOnce(new Error('p'));
+    await s.start();
+    await expect(s.onDone({ finalText: '', durationMs: 1, conclusion: 'c' })).resolves.toBeUndefined();
+  });
+
   it('mentionOpenId prefixes the body with an at tag', async () => {
     const { s, sink } = setup('ou_x');
     await s.start();
