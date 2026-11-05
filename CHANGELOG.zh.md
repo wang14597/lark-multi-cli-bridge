@@ -8,6 +8,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### 变更
 
+- **`/mode final` 改为回复普通消息，不再用卡片。** 对比另一个团队的 bot 后，用户彻底去掉了卡片：运行期间 bot 给用户那条消息加 `OnIt` 表情回应，结束时发一条 `post`（富文本）引用回复——群里先是 `at` 段落，再是只含结论的 `md` 段落（上限 8000 字符）——然后移除表情。出错回复 `⚠️ 没办成：…`；`/stop` 只移除表情。由于又是新消息，手机推送通知回来了（原地改卡片没有推送）。用户接受的取舍：没有停止按钮（用 `/stop`），运行中看不到进度。加表情 / 发送 / 取消表情失败只记日志、不抛错。`conclusion-card.ts` 由 `conclusion-post.ts` 取代；`lark-sink.ts` 新增 `ReplySink` / `LarkReplySink`。详见 [docs/changes/2026-11-05-final-mode-text-reply.zh.md](docs/changes/2026-11-05-final-mode-text-reply.zh.md)。
+
 - **用 `pnpm reload <bot>` / `pnpm reload:all` 跑「改代码 → 构建 → 重启」循环。** 之前让改动生效要先敲 `pnpm build` 再敲 `node ./bin/lmcb.mjs restart <bot>`，而且构建失败并不会拦住重启。现在 `pnpm reload codex-bot` 用 `&&` 把两步串起来，只重启那一个 worker（supervisor 用 `fork()` 起 worker，重启即加载当前 `dist/`，兄弟 bot 不受影响）；`pnpm reload:all` 则是构建 + 停启 supervisor，用于 `restart` 无法重载的 supervisor / CLI / IPC 改动——其中 `stop` 一步包在 `|| true` 里，使同一条命令也能当冷启动用（supervisor 没在跑时 `stop` 会退出 1，否则会中断整条链），安全性由 `start` 在已有 socket 仍 `ping` 得通时拒绝启动第二个 supervisor 来保证。两者都带 `--no-dts`：声明文件生成占了构建大头（实测 3.1s → 0.3s），且只对 import 本包的人有意义——类型检查仍归 `pnpm typecheck`，`pnpm build` 保持不变用于发布。bot 名没有写死；pnpm 会把 run 参数追加到 `&&` 链末尾，正好落在 `restart` 后面。见 [docs/changes/2026-10-08-dev-reload-scripts.zh.md](docs/changes/2026-10-08-dev-reload-scripts.zh.md)。
 
 ### 修复

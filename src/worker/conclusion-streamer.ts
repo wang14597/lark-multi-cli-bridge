@@ -1,25 +1,31 @@
 // SPDX-License-Identifier: MIT
 import { looksLikeJson } from '../adapters/conclusion.js';
-import { renderConclusionCard, renderNoteCard, renderPendingCard } from '../lark/conclusion-card.js';
-import type { CardSink } from './card-streamer.js';
+import { renderConclusionPost } from '../lark/conclusion-post.js';
+import type { ReplySink } from './lark-sink.js';
 
 export interface ConclusionStreamerOpts {
-  sink: CardSink;
+  sink: ReplySink;
   mentionOpenId?: string;
   log?: { warn(o: object, m: string): void };
 }
 
 const NO_CONCLUSION = '已完成，但没有返回结论';
 
-/** /mode final: one pending card, rewritten in place into the conclusion (no recall — users found it jarring). */
+const WORKING_EMOJI = 'OnIt';
+
+/** /mode final: an OnIt reaction while running, then one plain reply with the conclusion. No card. */
 export class ConclusionStreamer {
-  private statusId?: string;
+  private reactionId: string | undefined;
   private settled = false;
 
   constructor(private opts: ConclusionStreamerOpts) {}
 
   async start(): Promise<void> {
-    this.statusId = await this.opts.sink.create(renderPendingCard());
+    try {
+      this.reactionId = await this.opts.sink.react(WORKING_EMOJI);
+    } catch (err) {
+      this.opts.log?.warn({ err }, 'adding the working reaction failed');
+    }
   }
 
   // Intermediate events are intentionally dropped in final mode.
@@ -28,10 +34,9 @@ export class ConclusionStreamer {
   onToolCall(_callId: string, _name: string, _input: unknown): void {}
   onToolResult(_callId: string, _ok: boolean, _output?: string): void {}
 
+  // /stop already replies "aborted current run"; just clear the reaction.
   async onInterrupted(_reason: 'preempt' | 'user_stop'): Promise<void> {
-    if (this.settle() && this.statusId) {
-      await this.opts.sink.patch(this.statusId, renderNoteCard('已停止'));
-    }
+    if (this.settle()) await this.clearReaction();
   }
 
   async onError(message: string): Promise<void> {
@@ -61,22 +66,22 @@ export class ConclusionStreamer {
     return true;
   }
 
-  // Never throws. Edits in place (no push); falls back to a new message so the result is still visible.
+  // Never throws: a failed send is logged, and the reaction is cleared either way.
   private async conclude(text: string): Promise<void> {
-    const { sink, mentionOpenId, log } = this.opts;
-    const card = renderConclusionCard(text, mentionOpenId);
-    if (this.statusId) {
-      try {
-        await sink.patch(this.statusId, card);
-        return;
-      } catch (err) {
-        log?.warn({ err }, 'patching status card with the conclusion failed; sending it as a new message');
-      }
-    }
     try {
-      await sink.create(card);
+      await this.opts.sink.sendPost(renderConclusionPost(text, this.opts.mentionOpenId));
     } catch (err) {
-      log?.warn({ err }, 'sending conclusion message failed');
+      this.opts.log?.warn({ err }, 'sending conclusion failed');
+    }
+    await this.clearReaction();
+  }
+
+  private async clearReaction(): Promise<void> {
+    if (!this.reactionId) return;
+    try {
+      await this.opts.sink.unreact(this.reactionId);
+    } catch (err) {
+      this.opts.log?.warn({ err }, 'removing the working reaction failed');
     }
   }
 }
