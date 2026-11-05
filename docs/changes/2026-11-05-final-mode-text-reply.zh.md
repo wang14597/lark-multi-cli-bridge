@@ -29,6 +29,8 @@ slug: final-mode-text-reply
   `ConclusionStreamer` 改为接收 `ReplySink`（不再用 `CardSink`）；`card-builder.ts` 的
   `stopButton` 恢复为私有；worker 在 final 模式构造 `LarkReplySink`，stream 模式构造 `LarkCardSink`。
 
+- **结论要求遵循用户指定的格式。** `CONCLUSION_GUIDANCE`（`src/adapters/conclusion.ts`）不再硬性限制 1–5 句话：默认仍然简短，但用户要求了格式或内容（「按点列出」、清单、全文）时，按要求用 Markdown 列表完整给出。试用中发现：让 bot 按点列出时，它把 24 条压成了一段话。已用 claude 2.1.283 实测：同类请求现在返回编号列表。
+
 ## 涉及文件
 
 - `src/lark/conclusion-post.ts` — 新增：`renderConclusionPost`，取代已删除的 `conclusion-card.ts`。
