@@ -229,3 +229,15 @@ it must render Markdown links and support `<at>` in groups.
 - Codex item schema can change across CLI versions; the fixture pins today's.
 - Schema mode adds one tool call / constrained final message per run — small
   extra latency/tokens.
+
+## Revision 2026-11-05 (after user trial)
+
+After trying it, the user rejected the "new message + recall status card" flow:
+the "bot recalled a message" notice was jarring. Final mode now **rewrites the
+status card in place** into the conclusion card (same text rules, group `@`
+prefix kept, stop button gone); if that patch fails it falls back to sending the
+conclusion as a new message and never throws. Error / user stop also render in
+the same card. `LarkCardSink.recall` and the `ConclusionSink` interface were
+removed. Accepted trade-off: an in-place card update does not trigger a Lark
+push notification (only new messages do), so final mode no longer pushes. The
+sections above describe the original design and are left as written.

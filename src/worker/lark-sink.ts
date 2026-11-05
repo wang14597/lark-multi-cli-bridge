@@ -44,8 +44,4 @@ export class LarkCardSink implements CardSink {
       data: { content: JSON.stringify(card) },
     });
   }
-
-  async recall(messageId: string): Promise<void> {
-    await this.client.im.message.delete({ path: { message_id: messageId } });
-  }
 }

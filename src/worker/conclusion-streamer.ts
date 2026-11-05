@@ -3,19 +3,15 @@ import { looksLikeJson } from '../adapters/conclusion.js';
 import { renderConclusionCard, renderNoteCard, renderPendingCard } from '../lark/conclusion-card.js';
 import type { CardSink } from './card-streamer.js';
 
-export interface ConclusionSink extends CardSink {
-  recall(messageId: string): Promise<void>;
-}
-
 export interface ConclusionStreamerOpts {
-  sink: ConclusionSink;
+  sink: CardSink;
   mentionOpenId?: string;
   log?: { warn(o: object, m: string): void };
 }
 
 const NO_CONCLUSION = '已完成，但没有返回结论';
 
-/** /mode final: one pending card, then ONE fresh conclusion message (push) and recall the pending card. */
+/** /mode final: one pending card, rewritten in place into the conclusion (no recall — users found it jarring). */
 export class ConclusionStreamer {
   private statusId?: string;
   private settled = false;
@@ -65,32 +61,22 @@ export class ConclusionStreamer {
     return true;
   }
 
-  // Never throws and never leaves the user without a visible result.
+  // Never throws. Edits in place (no push); falls back to a new message so the result is still visible.
   private async conclude(text: string): Promise<void> {
     const { sink, mentionOpenId, log } = this.opts;
     const card = renderConclusionCard(text, mentionOpenId);
+    if (this.statusId) {
+      try {
+        await sink.patch(this.statusId, card);
+        return;
+      } catch (err) {
+        log?.warn({ err }, 'patching status card with the conclusion failed; sending it as a new message');
+      }
+    }
     try {
       await sink.create(card);
     } catch (err) {
-      log?.warn({ err }, 'sending conclusion message failed; showing it in the status card');
-      await this.tryPatch(renderConclusionCard(text));
-      return;
-    }
-    if (!this.statusId) return;
-    try {
-      await sink.recall(this.statusId);
-    } catch (err) {
-      log?.warn({ err }, 'recall of status card failed; marking it done');
-      await this.tryPatch(renderNoteCard('已完成'));
-    }
-  }
-
-  private async tryPatch(card: object): Promise<void> {
-    if (!this.statusId) return;
-    try {
-      await this.opts.sink.patch(this.statusId, card);
-    } catch (err) {
-      this.opts.log?.warn({ err }, 'patching status card failed');
+      log?.warn({ err }, 'sending conclusion message failed');
     }
   }
 }

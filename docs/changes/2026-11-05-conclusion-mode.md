@@ -4,15 +4,14 @@ type: feat
 slug: conclusion-mode
 ---
 
-# Conclusion mode: `/mode final` pushes one conclusion instead of a streaming card
+# Conclusion mode: `/mode final` shows one conclusion instead of a streaming card
 
 **Type:** feat
 
 ## Motivation
 
-A streaming card is noisy for long errands and does not push a notification
-when it finishes. Users wanted to hand off a task and get one message with the
-result. Separately, Codex cards never showed tool calls (the adapter dropped
+A streaming card is noisy for long errands. Users wanted to hand off a task and
+get one message with the result. Separately, Codex cards never showed tool calls (the adapter dropped
 every non-`agent_message` item) and glued consecutive agent messages together.
 
 ## What changed
@@ -20,13 +19,20 @@ every non-`agent_message` item) and glued consecutive agent messages together.
 - **`/mode stream|final`** stores `ChatSession.outputMode` per (chat, bot). It
   survives `/new` and `/cd` and is not admin-only. Default is `stream`.
 - **Final mode** (`ConclusionStreamer`, chosen per run by `resolveOutputMode`):
-  a "处理中…" status card with a stop button; on `done`, a **new** message with
-  the conclusion (so Lark pushes it; groups `@` the sender), then the status
-  card is recalled (`LarkCardSink.recall` → `im.message.delete`). Error /
-  `is_error` → "⚠️ 没办成：…"; user stop → card patched to "已停止".
-  Fallbacks: create fails → conclusion patched into the status card; recall
-  fails → card patched to "已完成"; empty → "已完成，但没有返回结论"; raw JSON is
-  never shown. The streamer settles on the first terminal event.
+  a "处理中…" status card with a stop button; when the run ends, that same card
+  is **rewritten in place** into the conclusion card (groups still prefix
+  `<at id=sender></at>`; the stop button goes away). Error / `is_error` →
+  "⚠️ 没办成：…" in the same card; user stop → "已停止" in the same card.
+  Fallbacks: the in-place patch fails → the conclusion is sent as a new
+  message (the streamer never throws); empty → "已完成，但没有返回结论"; raw JSON
+  is never shown. The streamer settles on the first terminal event.
+- **No-recall decision (user, 2026-11-05, after trying it):** the first version
+  sent a new conclusion message and recalled the status card, but the "bot
+  recalled a message" notice was jarring, so recall was dropped
+  (`LarkCardSink.recall` and the `ConclusionSink` interface removed;
+  `ConclusionStreamer` takes a plain `CardSink`). Trade-off the user accepted:
+  an in-place card update does not trigger a Lark push notification (only new
+  messages do), so final mode no longer pushes.
 - **Conclusion source** (`RunContext.conclusion` → `done.conclusion`):
   Claude `--json-schema` → `structured_output.conclusion`; Codex
   `--output-schema <tmp file>` → last `agent_message` JSON (the file is
@@ -62,7 +68,7 @@ every non-`agent_message` item) and glued consecutive agent messages together.
 - `src/adapters/conclusion.ts` — shared schema + parser; `types.ts` — `RunContext.conclusion`, `done.conclusion` / `done.isError`.
 - `src/adapters/claude.ts` / `codex.ts` / `gemini.ts` — per-CLI conclusion extraction; codex tool-call/message mapping.
 - `src/commands/handlers/mode.ts` — `/mode`; `src/session/{types,store}.ts` — `outputMode`.
-- `src/worker/conclusion-streamer.ts`, `src/lark/conclusion-card.ts` — new streamer + cards; `lark-sink.ts` — `recall`; `card-streamer.ts`, `card-builder.ts`, `dispatcher.ts`, `index.ts` — mode routing.
+- `src/worker/conclusion-streamer.ts`, `src/lark/conclusion-card.ts` — new streamer + cards; `card-streamer.ts`, `card-builder.ts`, `dispatcher.ts`, `index.ts` — mode routing.
 - `scripts/record-cli-fixture.sh` — close stdin; new fixtures under `tests/adapters/__fixtures__/`; tests for each of the above.
 - Docs: this change doc (+ `.zh.md`), INDEX, CHANGELOG, `architecture`.
 
