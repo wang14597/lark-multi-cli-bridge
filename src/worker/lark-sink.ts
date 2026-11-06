@@ -45,3 +45,52 @@ export class LarkCardSink implements CardSink {
     });
   }
 }
+
+/** What ConclusionStreamer needs: a status reaction on the user's message and one reply. */
+export interface ReplySink {
+  /** Returns the reaction id, or undefined when there is no user message to react to. */
+  react(emojiType: string): Promise<string | undefined>;
+  unreact(reactionId: string): Promise<void>;
+  sendPost(content: object): Promise<void>;
+}
+
+/**
+ * LarkReplySink — backs /mode final. Reacts on and quote-replies to `replyTo`
+ * (the user's message); without it (synthesized card-click runs) there is
+ * nothing to react to and the reply goes out top-level.
+ */
+export class LarkReplySink implements ReplySink {
+  constructor(
+    private client: Lark.Client,
+    private chatId: string,
+    private replyTo?: string,
+  ) {}
+
+  async react(emojiType: string): Promise<string | undefined> {
+    if (!this.replyTo) return undefined;
+    const res = await this.client.im.messageReaction.create({
+      path: { message_id: this.replyTo },
+      data: { reaction_type: { emoji_type: emojiType } },
+    });
+    return (res as unknown as { data?: { reaction_id?: string } }).data?.reaction_id;
+  }
+
+  async unreact(reactionId: string): Promise<void> {
+    if (!this.replyTo) return;
+    await this.client.im.messageReaction.delete({
+      path: { message_id: this.replyTo, reaction_id: reactionId },
+    });
+  }
+
+  async sendPost(content: object): Promise<void> {
+    const data = { content: JSON.stringify(content), msg_type: 'post' };
+    if (this.replyTo) {
+      await this.client.im.message.reply({ path: { message_id: this.replyTo }, data });
+    } else {
+      await this.client.im.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: { receive_id: this.chatId, ...data },
+      });
+    }
+  }
+}

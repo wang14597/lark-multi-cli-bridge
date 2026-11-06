@@ -10,7 +10,6 @@ import {
   chunkToEvents,
   parseGeminiJsonLine,
 } from '../../src/adapters/gemini.js';
-import { CONCLUSION_PROMPT_HINT } from '../../src/adapters/conclusion.js';
 import type { AdapterEvent, RunContext } from '../../src/adapters/types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -305,11 +304,8 @@ describe('GeminiAdapter conclusion mode', () => {
 
   const promptArg = (args: string[]) => args[args.indexOf('--prompt') + 1];
 
-  it('appends the conclusion hint to the prompt only when conclusion is on', async () => {
-    expect(promptArg((await run(ECHO_ARGS_SH, { conclusion: true })).args)).toBe(
-      `USER-PROMPT${CONCLUSION_PROMPT_HINT}`,
-    );
-    expect(promptArg((await run(ECHO_ARGS_SH, {})).args)).toBe('USER-PROMPT');
+  it('adds nothing to the prompt in conclusion mode', async () => {
+    expect(promptArg((await run(ECHO_ARGS_SH, { conclusion: true })).args)).toBe('USER-PROMPT');
   });
 
   it('sets done.conclusion to the text after the last tool call', async () => {

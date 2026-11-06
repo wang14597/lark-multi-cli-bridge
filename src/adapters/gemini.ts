@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 import { spawnWithLifecycle } from './base.js';
-import { CONCLUSION_PROMPT_HINT } from './conclusion.js';
 import type { Adapter, AdapterEvent, AdapterPreflight, RunContext } from './types.js';
 
 // Matches CSI/SGR ANSI escape sequences. The \x1b control character is the
@@ -193,11 +192,10 @@ export class GeminiAdapter implements Adapter {
 
     // gemini -p has no native system-instruction flag, so prepend
     // the system prompt to ctx.prompt with a '\n\n---\n\n' separator.
-    const basePrompt = this.opts.appendSystemPrompt
+    // No structured output in gemini, and no prompt is added: the conclusion is its text after the last tool call.
+    const finalPrompt = this.opts.appendSystemPrompt
       ? `${this.opts.appendSystemPrompt}\n\n---\n\n${ctx.prompt}`
       : ctx.prompt;
-    // No structured output in gemini: ask for a closing conclusion instead.
-    const finalPrompt = ctx.conclusion ? basePrompt + CONCLUSION_PROMPT_HINT : basePrompt;
 
     const args: string[] = [];
     if (jsonMode) args.push('-o', 'stream-json');

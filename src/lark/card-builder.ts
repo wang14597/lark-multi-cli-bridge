@@ -237,7 +237,7 @@ function noteMd(content: string): object {
   return { tag: 'markdown', content, text_size: 'notation' };
 }
 
-export function stopButton(): object {
+function stopButton(): object {
   return {
     tag: 'button',
     text: { tag: 'plain_text', content: '⏹ 终止' },

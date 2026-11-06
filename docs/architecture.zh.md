@@ -2,7 +2,7 @@
 
 English: [architecture.md](architecture.md)
 
-完整规范见 `docs/superpowers/specs/`。本文是更新至 v0.8.0 并含未发布的 codex lark-cli profile 固定修复与结论模式（`/mode final`）的工作摘要。逐次变更历史见 [docs/changes/](changes/INDEX.md)。
+完整规范见 `docs/superpowers/specs/`。本文是更新至 v0.8.0 并含未发布的 codex lark-cli profile 固定修复、结论模式（`/mode final`）及其由状态卡改为表情回应 + 普通 `post` 回复的工作摘要。逐次变更历史见 [docs/changes/](changes/INDEX.md)。
 
 ## 进程拓扑
 
@@ -61,8 +61,8 @@ lmcb 通过一个 **PATH shim** 来锁定身份：
 |----------------|------|
 | `cli/` | `lmcb` 入口；通过 Unix socket 把子命令转发给 supervisor |
 | `supervisor/` | fork worker、IPC server、崩溃预算、日志聚合 |
-| `worker/` | 单 bot 生命周期：Lark 事件 → dispatcher → adapter → 流式卡片。每次运行的 prompt 前缀（异步 `prefixPrompt`）为 `<bridge_context>`，群里设了分工时再加 `<team_roster>`（`team-roster.ts`；队友行带 `<at>` 标签，由各 worker 调群成员接口解析，缓存 10 分钟） |
-| `lark/` | Lark SDK 封装：WebSocket、消息解析、`card-builder.ts`、`markdown-normalize.ts`、`run-state.ts`、`tool-render.ts`、附件下载 |
+| `worker/` | 单 bot 生命周期：Lark 事件 → dispatcher → adapter → 流式卡片（stream 模式）或表情回应 + `post` 回复（final 模式，`lark-sink.ts` 的 `LarkCardSink` / `LarkReplySink`）。每次运行的 prompt 前缀（异步 `prefixPrompt`）为 `<bridge_context>`，群里设了分工时再加 `<team_roster>`（`team-roster.ts`；队友行带 `<at>` 标签，由各 worker 调群成员接口解析，缓存 10 分钟） |
+| `lark/` | Lark SDK 封装：WebSocket、消息解析、`card-builder.ts`、`conclusion-post.ts`（final 模式的 `post` 内容）、`markdown-normalize.ts`、`run-state.ts`、`tool-render.ts`、附件下载 |
 | `adapters/` | `ClaudeAdapter` / `CodexAdapter` / `GeminiAdapter`，实现 `AsyncIterable<AdapterEvent>` |
 | `commands/` | 斜杠命令路由 + handler（13 条命令，含管理员专用的 `/team`（群团队分工）和按会话的 `/mode stream\|final`） |
 | `session/` | `SessionStore`（每 bot 一个文件、单写者、内存缓存）+ `WorkspaceStore`（全 bot 共享一个文件、读时透传——不缓存，写为读-改-写）+ `TeamStore`（按群记录的团队分工，同样是共享的读时透传设计）。均原子写盘。 |
@@ -116,7 +116,7 @@ v0.4.0 在 `src/lark/` 中新增的关键文件：
 | `error` | CLI 产生了可恢复或致命错误 |
 | `done` | CLI 完成；最终文本 + token 用量，另有可选的 `conclusion`（简短最终结论，仅在 `RunContext.conclusion` 置位时出现）和 `isError` |
 
-Worker 的 `Dispatcher` 把事件喂给 `CardStreamer`，后者以 500 ms 或 50 字（先到者触发）节流推送 Lark 卡片补丁。每次运行通过 `resolveOutputMode`（取会话的 `ChatSession.outputMode`，默认 `stream`）二选一：`CardStreamer`（如上，实时卡片）或 `ConclusionStreamer`（`/mode final`：发一张带停止按钮的「处理中…」状态卡；运行结束时把同一张卡片原地改写成结论卡——群里 `@` 发送者、停止按钮消失、不撤回，因此不推送通知；patch 失败则把结论作为新消息发出，绝不抛错；出错显示 `⚠️ 没办成：…`，用户停止则显示「已停止」）。置位 `RunContext.conclusion` 时，适配器向 CLI 索取结论：Claude 用 `--json-schema` → `structured_output.conclusion`；Codex 用 `--output-schema <按进程命名的临时文件 `lmcb-conclusion-schema-<pid>.json`，每次运行前若缺失则重建>` → 最后一条 `agent_message` 的 JSON；Gemini 用 prompt 提示 → 最后一次工具调用之后的文本（尽力而为）。Codex 的 `command_execution` 映射为 `tool-call`/`tool-result`，`reasoning` 映射为 `thinking`。
+Worker 的 `Dispatcher` 把事件喂给 `CardStreamer`，后者以 500 ms 或 50 字（先到者触发）节流推送 Lark 卡片补丁。每次运行通过 `resolveOutputMode`（取会话的 `ChatSession.outputMode`，默认 `stream`）二选一：`CardStreamer`（如上，实时卡片）或 `ConclusionStreamer`（`/mode final`：不用卡片——接收 `ReplySink`（`worker/lark-sink.ts` 的 `LarkReplySink`；stream 模式用 `LarkCardSink`）；运行期间给用户消息加 `OnIt` 表情回应，运行结束时发**一条** `post`（富文本）引用回复，内容由 `renderConclusionPost`（`lark/conclusion-post.ts`）生成：群里先 `at` 段落，再一个 `md` 段落，上限 8000 字符，然后移除表情。是新消息，所以会触发手机推送；出错回复 `⚠️ 没办成：…`；用户 `/stop` 只移除表情；没有用户消息的运行（卡片点击）不加表情，结论作为顶层 post 发出；加表情 / 发送 / 取消表情失败只记日志、不抛错；没有停止按钮）。置位 `RunContext.conclusion` 时，适配器向 CLI 索取结论：Claude 用 `--json-schema` → `structured_output.conclusion`；Codex 用 `--output-schema <按进程命名的临时文件 `lmcb-conclusion-schema-<pid>.json`，每次运行前若缺失则重建>` → 最后一条 `agent_message` 的 JSON；Gemini（不改 prompt）→ 最后一次工具调用之后的文本（尽力而为）。Codex 的 `command_execution` 映射为 `tool-call`/`tool-result`，`reasoning` 映射为 `thinking`。
 
 ## 流式卡片状态机
 

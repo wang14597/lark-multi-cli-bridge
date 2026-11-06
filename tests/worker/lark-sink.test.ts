@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { describe, it, expect, vi } from 'vitest';
-import { LarkCardSink } from '../../src/worker/lark-sink.js';
+import { LarkCardSink, LarkReplySink } from '../../src/worker/lark-sink.js';
 import type * as Lark from '@larksuiteoapi/node-sdk';
 
 interface FakeIm {
@@ -84,5 +84,52 @@ describe('LarkCardSink', () => {
     });
     const sink = new LarkCardSink(client, 'oc_chat_1', 'om_user_msg_42');
     await expect(sink.create({})).rejects.toThrow(/no message_id/);
+  });
+});
+
+describe('LarkReplySink', () => {
+  function makeReplyClient() {
+    const im = {
+      message: {
+        create: vi.fn().mockResolvedValue({}),
+        reply: vi.fn().mockResolvedValue({}),
+      },
+      messageReaction: {
+        create: vi.fn().mockResolvedValue({ data: { reaction_id: 'r_9' } }),
+        delete: vi.fn().mockResolvedValue({}),
+      },
+    };
+    return { client: { im } as unknown as Lark.Client, im };
+  }
+
+  it('with replyTo: reacts on, unreacts on, and post-replies to the user message', async () => {
+    const { client, im } = makeReplyClient();
+    const sink = new LarkReplySink(client, 'oc_chat_1', 'om_user_1');
+    expect(await sink.react('OnIt')).toBe('r_9');
+    expect(im.messageReaction.create).toHaveBeenCalledWith({
+      path: { message_id: 'om_user_1' },
+      data: { reaction_type: { emoji_type: 'OnIt' } },
+    });
+    await sink.unreact('r_9');
+    expect(im.messageReaction.delete).toHaveBeenCalledWith({
+      path: { message_id: 'om_user_1', reaction_id: 'r_9' },
+    });
+    await sink.sendPost({ zh_cn: { content: [] } });
+    expect(im.message.reply).toHaveBeenCalledWith({
+      path: { message_id: 'om_user_1' },
+      data: { content: '{"zh_cn":{"content":[]}}', msg_type: 'post' },
+    });
+  });
+
+  it('without replyTo: no reaction, post goes out top-level to the chat', async () => {
+    const { client, im } = makeReplyClient();
+    const sink = new LarkReplySink(client, 'oc_chat_1');
+    expect(await sink.react('OnIt')).toBeUndefined();
+    expect(im.messageReaction.create).not.toHaveBeenCalled();
+    await sink.sendPost({ zh_cn: { content: [] } });
+    expect(im.message.create).toHaveBeenCalledWith({
+      params: { receive_id_type: 'chat_id' },
+      data: { receive_id: 'oc_chat_1', content: '{"zh_cn":{"content":[]}}', msg_type: 'post' },
+    });
   });
 });

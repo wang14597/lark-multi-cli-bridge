@@ -22,7 +22,7 @@ import { LarkWsClient } from '../lark/ws.js';
 import { adaptLarkLogger } from '../lark/sdk-logger.js';
 import { CardStreamer } from './card-streamer.js';
 import { ConclusionStreamer } from './conclusion-streamer.js';
-import { LarkCardSink } from './lark-sink.js';
+import { LarkCardSink, LarkReplySink } from './lark-sink.js';
 import { Dispatcher } from './dispatcher.js';
 import { buildTeamRoster, makeChatBotsLookup } from './team-roster.js';
 import { buildBridgeContext } from './bridge-context.js';
@@ -189,17 +189,16 @@ export async function runWorker(botName: string): Promise<void> {
   const dispatcher = new Dispatcher({
     adapter,
     makeStreamer: (chatId, replyTo, mode) => {
-      const sink = new LarkCardSink(client, chatId, replyTo);
       if (mode === 'final') {
         const last = lastIngressByChat.get(chatId);
         const mentionOpenId = last?.chatType === 'group' ? last.senderOpenId : undefined;
         return new ConclusionStreamer({
-          sink,
+          sink: new LarkReplySink(client, chatId, replyTo),
           ...(mentionOpenId ? { mentionOpenId } : {}),
           log,
         });
       }
-      return new CardStreamer({ sink, throttleMs: 500, throttleChars: 50 });
+      return new CardStreamer({ sink: new LarkCardSink(client, chatId, replyTo), throttleMs: 500, throttleChars: 50 });
     },
     resolveOutputMode: (chatId) => sessions.get(chatId, bot.name)?.outputMode,
     onSessionUpdate: (chatId, sessionId) => {

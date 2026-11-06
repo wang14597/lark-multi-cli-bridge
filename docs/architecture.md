@@ -2,7 +2,7 @@
 
 中文版: [architecture.zh.md](architecture.zh.md)
 
-See the canonical design document under `docs/superpowers/specs/` for the full specification. This is a working summary updated through v0.8.0 plus the unreleased codex lark-cli profile-pin fix and conclusion mode (`/mode final`). Granular per-change history lives in [docs/changes/](changes/INDEX.md).
+See the canonical design document under `docs/superpowers/specs/` for the full specification. This is a working summary updated through v0.8.0 plus the unreleased codex lark-cli profile-pin fix, conclusion mode (`/mode final`) and its switch from a status card to an emoji reaction + plain `post` reply. Granular per-change history lives in [docs/changes/](changes/INDEX.md).
 
 ## Process topology
 
@@ -65,8 +65,8 @@ the env vars are recognised but never mint a usable bot token.
 |-----------------|----------------|
 | `cli/` | `lmcb` entrypoint; routes subcommands through the Unix socket to the supervisor |
 | `supervisor/` | Worker fork/respawn, IPC server, crash budget, log aggregation |
-| `worker/` | Single-bot lifecycle: Lark events → dispatcher → adapter → streaming card. Each run's prompt is prefixed (async `prefixPrompt`) with `<bridge_context>` and, when the group has a roster, `<team_roster>` (`team-roster.ts`; teammate lines carry an `<at>` mention tag resolved per worker via the chat-members API, cached 10 min) |
-| `lark/` | Lark SDK wrapper: WebSocket, message parsing, `card-builder.ts`, `markdown-normalize.ts`, `run-state.ts`, `tool-render.ts`, attachment download |
+| `worker/` | Single-bot lifecycle: Lark events → dispatcher → adapter → streaming card (stream mode) or reaction + `post` reply (final mode, `lark-sink.ts` `LarkCardSink` / `LarkReplySink`). Each run's prompt is prefixed (async `prefixPrompt`) with `<bridge_context>` and, when the group has a roster, `<team_roster>` (`team-roster.ts`; teammate lines carry an `<at>` mention tag resolved per worker via the chat-members API, cached 10 min) |
+| `lark/` | Lark SDK wrapper: WebSocket, message parsing, `card-builder.ts`, `conclusion-post.ts` (final-mode `post` content), `markdown-normalize.ts`, `run-state.ts`, `tool-render.ts`, attachment download |
 | `adapters/` | `ClaudeAdapter` / `CodexAdapter` / `GeminiAdapter` implementing `AsyncIterable<AdapterEvent>` |
 | `commands/` | Slash-command router and handlers (13 commands, incl. admin-only `/team` for the group roster and per-chat `/mode stream\|final`) |
 | `session/` | `SessionStore` (one file per bot, single writer, cached in memory) + `WorkspaceStore` (one file shared by all bots, read-through — no cache, mutations are read-modify-write) + `TeamStore` (per-group roster, same shared read-through design). All use atomic writes. |
@@ -120,7 +120,7 @@ All adapters expose `AsyncIterable<AdapterEvent>` over `run(ctx)`. The discrimin
 | `error` | Recoverable or fatal error from the CLI |
 | `done` | CLI finished; final text + token usage, plus optional `conclusion` (the short final answer, only when `RunContext.conclusion` was set) and `isError` |
 
-The worker's `Dispatcher` aggregates events into a `CardStreamer`, which throttles Lark card patches to 500 ms or 50 chars (whichever fires first). Each run picks one of two streamers via `resolveOutputMode` (the chat's `ChatSession.outputMode`, default `stream`): `CardStreamer` (live card, as above) or `ConclusionStreamer` (`/mode final`: a "处理中…" status card with a stop button; when the run ends it rewrites that same card in place into the conclusion — `@` sender in groups, stop button gone, no recall and so no push notification; if the patch fails it sends the conclusion as a new message and never throws; errors render `⚠️ 没办成：…`, user stop shows "已停止"). When `RunContext.conclusion` is set the adapter asks the CLI for a conclusion: Claude `--json-schema` → `structured_output.conclusion`; Codex `--output-schema <per-process tmp file `lmcb-conclusion-schema-<pid>.json`, re-created before each run if missing>` → last `agent_message` JSON; Gemini a prompt hint → text after the last tool call (best effort). Codex `command_execution` items map to `tool-call`/`tool-result`, `reasoning` to `thinking`.
+The worker's `Dispatcher` aggregates events into a `CardStreamer`, which throttles Lark card patches to 500 ms or 50 chars (whichever fires first). Each run picks one of two streamers via `resolveOutputMode` (the chat's `ChatSession.outputMode`, default `stream`): `CardStreamer` (live card, as above) or `ConclusionStreamer` (`/mode final`: no card — it takes a `ReplySink` (`LarkReplySink` in `worker/lark-sink.ts`, vs `LarkCardSink` for stream mode); while running it adds an `OnIt` reaction to the user's message, and when the run ends it sends ONE `post` (rich text) quote-reply built by `renderConclusionPost` (`lark/conclusion-post.ts`: an `at` paragraph first in groups, then one `md` paragraph, capped at 8000 chars) and removes the reaction. A new message, so the phone push notification fires; errors reply `⚠️ 没办成：…`; user `/stop` only removes the reaction; runs without a user message (card-click) get no reaction and a top-level post; react / send / unreact failures are logged and never thrown; no stop button). When `RunContext.conclusion` is set the adapter asks the CLI for a conclusion: Claude `--json-schema` → `structured_output.conclusion`; Codex `--output-schema <per-process tmp file `lmcb-conclusion-schema-<pid>.json`, re-created before each run if missing>` → last `agent_message` JSON; Gemini (no prompt added) → text after the last tool call (best effort). Codex `command_execution` items map to `tool-call`/`tool-result`, `reasoning` to `thinking`.
 
 ## Streaming card state machine
 
