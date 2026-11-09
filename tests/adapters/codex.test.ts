@@ -49,9 +49,16 @@ describe('CodexAdapter.parseCodexJsonLine', () => {
     const last = events[events.length - 1];
     expect(last?.type).toBe('done');
     if (last?.type === 'done') {
-      expect(last.sessionId).toBe('019e826f-437c-7a00-a217-abe211f4598b');
+      // The parser is stateless: run() fills the thread id in (see the crosstalk tests).
+      expect(last.sessionId).toBe('');
       expect(last.usage).toEqual({ inputTokens: 17176, outputTokens: 174 });
     }
+  });
+
+  it('turn.completed never carries a thread id from another stream (crosstalk)', () => {
+    [...parseCodexJsonLine('{"type":"thread.started","thread_id":"other-chat-thread"}')];
+    const evs = [...parseCodexJsonLine('{"type":"turn.completed"}')];
+    expect(evs).toEqual([{ type: 'done', sessionId: '', finalText: '' }]);
   });
 
   it('ignores turn.started (no-op event)', () => {
@@ -388,6 +395,20 @@ describe('CodexAdapter run() over recorded item streams', () => {
     writeFileSync(f, lines.join('\n') + '\n');
     return f;
   }
+
+  it('done carries this run\'s own thread id', async () => {
+    const { events } = await runFixture('json-0130.jsonl');
+    expect(events.at(-1)).toMatchObject({ type: 'done', sessionId: '019e826f-437c-7a00-a217-abe211f4598b' });
+  });
+
+  it('concurrent runs keep their own thread ids (no crosstalk)', async () => {
+    const [a, b] = await Promise.all([runFixture('json-0130.jsonl'), runFixture('json-tools.jsonl')]);
+    const idOf = (evs: AdapterEvent[]) =>
+      evs.find((e): e is Extract<AdapterEvent, { type: 'session-start' }> => e.type === 'session-start')!.sessionId;
+    expect(a.events.at(-1)).toMatchObject({ type: 'done', sessionId: idOf(a.events) });
+    expect(b.events.at(-1)).toMatchObject({ type: 'done', sessionId: idOf(b.events) });
+    expect(idOf(a.events)).not.toBe(idOf(b.events));
+  });
 
   it('yields tool events between messages without a paragraph prefix; finalText = last message', async () => {
     const { events } = await runFixture('json-tools.jsonl');

@@ -36,11 +36,6 @@ function getConclusionSchemaFile(): string {
   return f;
 }
 
-// Shared across calls so parseCodexJsonLine can attach the most recent
-// thread_id (from thread.started) to a later turn.completed's `done`
-// event, since 0.130.0's turn.completed does not echo the thread id.
-let lastThreadId = '';
-
 export function* parseCodexJsonLine(line: string): Iterable<AdapterEvent> {
   let obj: CodexJsonLine;
   try {
@@ -51,7 +46,6 @@ export function* parseCodexJsonLine(line: string): Iterable<AdapterEvent> {
 
   // codex 0.130.0+ schema
   if (obj.type === 'thread.started' && obj.thread_id) {
-    lastThreadId = obj.thread_id;
     yield { type: 'session-start', sessionId: obj.thread_id };
     return;
   }
@@ -80,9 +74,12 @@ export function* parseCodexJsonLine(line: string): Iterable<AdapterEvent> {
     return;
   }
   if (obj.type === 'turn.completed') {
+    // turn.completed doesn't echo the thread id; run() fills in the one its own
+    // thread.started reported. Never keep it in module state — concurrent chats
+    // in one worker would get each other's thread and resume the wrong session.
     yield {
       type: 'done',
-      sessionId: lastThreadId,
+      sessionId: '',
       finalText: '',
       ...(obj.usage
         ? {
