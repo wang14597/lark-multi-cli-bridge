@@ -2,7 +2,7 @@
 
 中文版: [architecture.zh.md](architecture.zh.md)
 
-See the canonical design document under `docs/superpowers/specs/` for the full specification. This is a working summary updated through v0.8.0 plus the unreleased codex lark-cli profile-pin fix, conclusion mode (`/mode final`) and its switch from a status card to an emoji reaction + plain `post` reply. Granular per-change history lives in [docs/changes/](changes/INDEX.md).
+See the canonical design document under `docs/superpowers/specs/` for the full specification. This is a working summary updated through v0.8.0 plus the unreleased codex lark-cli profile-pin fix, the codex session-crosstalk fix, the worker-restart zombie fix, conclusion mode (`/mode final`) and its switch from a status card to an emoji reaction + plain `post` reply. Granular per-change history lives in [docs/changes/](changes/INDEX.md).
 
 ## Process topology
 
@@ -187,4 +187,5 @@ Tool detail (full input + output) is intentionally not surfaced in the card — 
 
 - Back-off schedule: 1s, 2s, 5s, 15s, 30s (exponential).
 - Budget: 5 crashes in 3 minutes → worker disabled; requires manual `lmcb restart <bot>`.
+- Restart / stop: the old worker gets SIGTERM and, if it hasn't exited after 10 s, SIGKILL. `restart` spawns the replacement only after the old worker is gone, and a replaced worker's late exit never touches the slot's current worker. A worker on SIGTERM aborts its running chats (killing their CLI processes) and exits within 5 s, even if the Lark connection doesn't close. Two live workers for one bot would split its messages between them over two Lark connections.
 - The supervisor itself does not crash-restart; if the supervisor exits, all workers exit with it (launchd or the user restarts the supervisor).

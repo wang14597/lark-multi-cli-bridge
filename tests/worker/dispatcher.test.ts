@@ -157,3 +157,38 @@ describe('Dispatcher output mode', () => {
     expect(adapter.ctxs.map((c) => c.conclusion)).toEqual([true, true]);
   });
 });
+
+describe('Dispatcher.abortAll', () => {
+  it('aborts every running chat and resolves once their runs have wound down', async () => {
+    const seen: string[] = [];
+    const adapter: Adapter = {
+      backend: 'claude',
+      preflight: async () => ({ ok: true }),
+      // eslint-disable-next-line require-yield -- blocks until aborted, never emits
+      async *run(ctx: RunContext): AsyncIterable<AdapterEvent> {
+        await new Promise<void>((resolve) => ctx.signal.addEventListener('abort', () => resolve()));
+        seen.push(ctx.prompt);
+        throw ctx.signal.reason;
+      },
+    };
+    const streamers = [fakeStreamer(), fakeStreamer()];
+    let i = 0;
+    const d = new Dispatcher({
+      adapter,
+      makeStreamer: () => streamers[i++]!,
+      onSessionUpdate: () => {},
+      batchWindowMs: 1,
+    });
+    await d.enqueue({ chatId: 'a', prompt: 'A', cwd: '/', idleTimeoutMs: 60_000 });
+    await d.enqueue({ chatId: 'b', prompt: 'B', cwd: '/', idleTimeoutMs: 60_000 });
+    await new Promise((r) => setTimeout(r, 50));
+    await d.abortAll();
+    expect(seen.sort()).toEqual(['A', 'B']);
+    for (const s of streamers) expect(s.onInterrupted).toHaveBeenCalledWith('user_stop');
+  });
+
+  it('is a no-op when nothing is running', async () => {
+    const d = new Dispatcher({ adapter: new MockAdapter([]), makeStreamer: fakeStreamer, onSessionUpdate: () => {} });
+    await expect(d.abortAll()).resolves.toBeUndefined();
+  });
+});

@@ -72,6 +72,18 @@ export class Dispatcher {
     return true;
   }
 
+  /** Shutdown: stop every running chat (killing its CLI) and wait for the runs to wind down. */
+  async abortAll(): Promise<void> {
+    const running: Promise<void>[] = [];
+    for (const lane of this.lanes.values()) {
+      lane.pending = []; // don't start queued work on the way out
+      if (!lane.current) continue;
+      lane.current.ac.abort(new UserStopError());
+      running.push(lane.current.promise.catch(() => {}));
+    }
+    await Promise.all(running);
+  }
+
   async enqueue(req: DispatchRequest): Promise<void> {
     const lane = this.getLane(req.chatId);
     lane.pending.push(req);
