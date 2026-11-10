@@ -14,6 +14,8 @@ export interface WorkerManagerOpts {
   bots: BotConfig[];
   crashBudget: CrashBudget;
   delays: number[];
+  /** How long a worker gets to exit after SIGTERM before it is SIGKILLed. Default 10s. */
+  killTimeoutMs?: number;
 }
 
 // Internal slot uses non-optional union types so `= undefined` assignments satisfy
@@ -57,12 +59,31 @@ export class WorkerManager extends EventEmitter {
 
   async stop(): Promise<void> {
     this.stopping = true;
+    const exits: Promise<void>[] = [];
     for (const slot of this.slots.values()) {
       if (slot.child) {
         slot.state = 'stopped';
-        slot.child.kill('SIGTERM');
+        exits.push(this.terminate(slot.child));
       }
     }
+    await Promise.all(exits);
+  }
+
+  /**
+   * SIGTERM, then SIGKILL if the worker hasn't exited within killTimeoutMs.
+   * A worker that outlives its replacement keeps its Lark connection, so Lark
+   * splits the bot's messages between the two and chats run twice.
+   */
+  private terminate(child: ChildProcess): Promise<void> {
+    if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => child.kill('SIGKILL'), this.opts.killTimeoutMs ?? 10_000);
+      child.once('exit', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      child.kill('SIGTERM');
+    });
   }
 
   statusOf(bot: string): WorkerStatus {
@@ -85,9 +106,11 @@ export class WorkerManager extends EventEmitter {
   async restart(bot: string): Promise<void> {
     const slot = this.slots.get(bot);
     if (!slot) throw new Error(`unknown bot: ${bot}`);
-    if (slot.child) {
+    const old = slot.child;
+    if (old) {
       slot.state = 'restarting';
-      slot.child.kill('SIGTERM');
+      slot.child = undefined; // its exit belongs to no one now (see the exit handler)
+      await this.terminate(old);
     }
     slot.crashTimestamps = [];
     slot.attempt = 0;
@@ -113,6 +136,8 @@ export class WorkerManager extends EventEmitter {
     });
 
     child.once('exit', (code) => {
+      // A replaced worker exiting late must not touch the slot's current worker.
+      if (slot.child !== child) return;
       slot.child = undefined;
       if (this.stopping || slot.state === 'stopped') return;
       const wasReady = slot.state === 'ready';

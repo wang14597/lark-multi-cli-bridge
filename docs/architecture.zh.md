@@ -2,7 +2,7 @@
 
 English: [architecture.md](architecture.md)
 
-完整规范见 `docs/superpowers/specs/`。本文是更新至 v0.8.0 并含未发布的 codex lark-cli profile 固定修复、结论模式（`/mode final`）及其由状态卡改为表情回应 + 普通 `post` 回复的工作摘要。逐次变更历史见 [docs/changes/](changes/INDEX.md)。
+完整规范见 `docs/superpowers/specs/`。本文是更新至 v0.8.0 并含未发布的 codex lark-cli profile 固定修复、codex 会话串台修复、worker 重启遗留僵尸进程修复、结论模式（`/mode final`）及其由状态卡改为表情回应 + 普通 `post` 回复的工作摘要。逐次变更历史见 [docs/changes/](changes/INDEX.md)。
 
 ## 进程拓扑
 
@@ -183,4 +183,5 @@ Worker 的 `Dispatcher` 把事件喂给 `CardStreamer`，后者以 500 ms 或 50
 
 - 退避策略：1s、2s、5s、15s、30s（指数）。
 - 预算：3 分钟内崩溃 5 次 → worker 被禁用；需手动 `lmcb restart <bot>` 重新启用。
+- 重启 / 停止：先给旧 worker 发 SIGTERM，10 秒内没退出就 SIGKILL。`restart` 等旧 worker 确实退出后才启动新的；被替换的旧 worker 晚些退出时，不会再影响槽位里当前的 worker。worker 收到 SIGTERM 后会中止正在运行的会话（结束对应的 CLI 进程），并在 5 秒内退出，即使 Lark 连接没有关闭。同一个 bot 如果同时存在两个 worker，会通过两条 Lark 连接分走它的消息。
 - supervisor 本身不自动重启；supervisor 退出则所有 worker 一并退出（由 launchd 或用户重启 supervisor）。

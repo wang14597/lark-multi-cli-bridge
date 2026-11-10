@@ -390,6 +390,10 @@ export async function runWorker(botName: string): Promise<void> {
 
   const onShutdown = async (sig: NodeJS.Signals): Promise<void> => {
     log.info({ sig }, 'worker shutting down');
+    // Never hang: a worker that outlives its replacement keeps its Lark
+    // connection and steals the bot's messages. Abort runs so CLIs aren't orphaned.
+    setTimeout(() => process.exit(0), 5_000).unref();
+    await dispatcher.abortAll();
     await ws.stop();
     process.exit(0);
   };
