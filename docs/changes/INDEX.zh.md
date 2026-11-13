@@ -7,6 +7,7 @@ English: [INDEX.md](INDEX.md)
 
 | 日期 | 类型 | 变更 | 摘要 |
 |------|------|------|------|
+| 2026-11-13 | fix | [concurrent-session-save-crash](2026-11-13-concurrent-session-save-crash.zh.md) | 两个群在同一秒内开工，worker 崩溃，两张卡片一直停在“正在思考”。`writeJsonAtomic` 的临时文件名是 `<pid>.<毫秒>`，同一毫秒内的两次保存撞了名，第二次 `rename` 报 ENOENT；`upsert` 调用后没人等它的结果，这个失败也就没人处理。修复：临时文件名改用 UUID；`SessionStore` 的写入改为串行；保存失败只记日志，不再让进程崩溃。 |
 | 2026-11-11 | fix | [ws-handshake-timeout-crash](2026-11-11-ws-handshake-timeout-crash.zh.md) | 网络短暂波动让 3 个 bot 全部被禁用。WebSocket 握手超时时，飞书 SDK 先移除 socket 的监听再 terminate，`ws` 抛出的错误没人捕获，worker 以 exit code 1 退出，3 分钟内崩溃 5 次触发了崩溃预算。现在 worker 只捕获这一种错误，让 SDK 自行重试；其他未捕获异常仍然退出。 |
 | 2026-11-10 | fix | [worker-restart-zombies](2026-11-10-worker-restart-zombies.zh.md) | 重启会把旧 worker 留在后台：`restart()` 不等旧进程退出就 fork 新的，旧 worker 晚些退出时又会影响新 worker 的槽位，还可能再 fork 一个。结果 3 个 bot 跑着 6 个 worker，分走了每个 bot 的 Lark 事件，同一个群的任务被跑两遍、会话分叉。现在：先 SIGTERM，10 秒后 SIGKILL；restart 等旧 worker 退出；忽略过期的退出事件；worker 关闭时中止正在运行的任务，并在 5 秒内退出。 |
 | 2026-11-09 | fix | [codex-session-crosstalk](2026-11-09-codex-session-crosstalk.zh.md) | codex-bot 的多个会话并发时会接到彼此的 session 上。解析器把最近一次 `thread.started` 的 id 存在模块级变量里，worker 里所有会话共用它，又被填进 `done` 事件，结果 8 个会话共用了一个 thread。现在解析器不再保存状态，由 `run()` 填入自己的 thread id。已经串过的会话记录不在本次修复范围内。 |

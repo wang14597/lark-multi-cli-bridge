@@ -345,3 +345,17 @@ describe('SessionStore', () => {
     });
   });
 });
+
+describe('SessionStore concurrent saves', () => {
+  it('keeps every chat when several chats save at the same moment', async () => {
+    const s = new SessionStore(join(dir, 'concurrent.json'));
+    await s.load();
+    const chats = Array.from({ length: 10 }, (_, i) => `oc_${i}`);
+    await Promise.all(
+      chats.map((c) => s.upsert(c, { backend: 'gemini', bot: 'gemini-bot', cwd: '/tmp', sessionId: `sid-${c}` })),
+    );
+    const reloaded = new SessionStore(join(dir, 'concurrent.json'));
+    await reloaded.load();
+    for (const c of chats) expect(reloaded.get(c, 'gemini-bot')?.sessionId).toBe(`sid-${c}`);
+  });
+});

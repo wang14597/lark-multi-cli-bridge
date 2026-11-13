@@ -181,8 +181,13 @@ export class SessionStore {
     await this.persist();
   }
 
-  private async persist(): Promise<void> {
-    await writeJsonAtomic(this.filePath, this.data);
+  private writes: Promise<void> = Promise.resolve();
+
+  // One write at a time, so an older snapshot can't land after a newer one.
+  private persist(): Promise<void> {
+    const next = this.writes.then(() => writeJsonAtomic(this.filePath, this.data));
+    this.writes = next.catch(() => {});
+    return next;
   }
 }
 

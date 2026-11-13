@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, existsSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeJsonAtomic, readJsonOrDefault } from '../../src/util/atomic-file.js';
@@ -36,5 +36,16 @@ describe('atomic-file', () => {
     await writeJsonAtomic(target, { a: 2 });
     expect(JSON.parse(readFileSync(target, 'utf8'))).toEqual({ a: 2 });
     expect(existsSync(`${target}.tmp`)).toBe(false);
+  });
+});
+
+describe('writeJsonAtomic concurrency', () => {
+  it('survives many concurrent writes to the same file (same pid, same millisecond)', async () => {
+    const file = join(dir, 'state.json');
+    await expect(
+      Promise.all(Array.from({ length: 20 }, (_, i) => writeJsonAtomic(file, { i }))),
+    ).resolves.toBeDefined();
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toHaveProperty('i');
+    expect(readdirSync(dir)).toEqual(['state.json']); // no stray temp files
   });
 });
