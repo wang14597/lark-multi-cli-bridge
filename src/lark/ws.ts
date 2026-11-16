@@ -8,6 +8,16 @@ import type { CardActionEvent } from './card-action.js';
 import type { SdkLogger } from './sdk-logger.js';
 import { baseSdkOptions } from './sdk-options.js';
 
+/**
+ * On a handshake timeout the Lark SDK strips the socket's listeners and then
+ * terminates it mid-handshake. `ws` then emits this error with no listener
+ * left, which surfaces as an uncaught exception and kills the worker, even
+ * though the SDK has already counted the attempt as failed and will retry.
+ */
+export function isAbortedHandshakeError(err: unknown): boolean {
+  return err instanceof Error && err.message === 'WebSocket was closed before the connection was established';
+}
+
 export interface LarkWsOpts {
   appId: string;
   appSecret: string;

@@ -18,7 +18,7 @@ import {
   fetchBotSelfOpenId,
   fetchChatBots,
 } from '../lark/client.js';
-import { LarkWsClient } from '../lark/ws.js';
+import { LarkWsClient, isAbortedHandshakeError } from '../lark/ws.js';
 import { adaptLarkLogger } from '../lark/sdk-logger.js';
 import { CardStreamer } from './card-streamer.js';
 import { ConclusionStreamer } from './conclusion-streamer.js';
@@ -119,6 +119,17 @@ export async function runWorker(botName: string): Promise<void> {
   // truncated to `[Object]` / `[Array]` by Node's default console.log.
   const sdkLogger = adaptLarkLogger(log);
 
+  // A network blip used to crash every worker within seconds (see isAbortedHandshakeError)
+  // and the crash budget then disabled all bots. Survive that one; anything else still exits.
+  process.on('uncaughtException', (err) => {
+    if (isAbortedHandshakeError(err)) {
+      log.warn('[ws] handshake aborted; the SDK will retry');
+      return;
+    }
+    log.fatal({ err }, 'uncaught exception');
+    process.exit(1);
+  });
+
   const client = createLarkClient({
     appId: bot.lark.app_id,
     appSecret: bot.lark.app_secret,
@@ -204,12 +215,12 @@ export async function runWorker(botName: string): Promise<void> {
     onSessionUpdate: (chatId, sessionId) => {
       const existing = sessions.get(chatId, bot.name);
       const cwd = existing?.cwd ?? resolveCwd(bot.behavior.default_cwd);
-      void sessions.upsert(chatId, {
+      sessions.upsert(chatId, {
         backend: bot.backend.type,
         bot: bot.name,
         cwd,
         sessionId,
-      });
+      }).catch((err) => log.error({ err, chatId }, 'saving session failed'));
     },
     prefixPrompt: async (chatId, prompt) => {
       const last = lastIngressByChat.get(chatId);
